@@ -1,0 +1,134 @@
+<!doctype html>
+<html lang="ja">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover, user-scalable=no">
+  <meta name="theme-color" content="#1a0f33">
+  <meta name="description" content="ブラウザで遊べる大乱闘アクションゲーム。ふっとばして場外へ！">
+  <title>大乱闘ブラストファイターズ</title>
+  <link rel="icon" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 100 100'%3E%3Ccircle cx='50' cy='50' r='46' fill='%23ff5a36'/%3E%3Cpath d='M50 12 L50 88 M12 50 L88 50' stroke='%23fff' stroke-width='10'/%3E%3C/svg%3E">
+  <link rel="stylesheet" href="style.css">
+</head>
+<body data-screen="title">
+  <canvas id="game"></canvas>
+
+  <!-- タイトル -->
+  <section id="title" class="screen">
+    <div class="logo">
+      <div class="logo-sub">大乱闘</div>
+      <div class="logo-main">BLAST<span>FIGHTERS</span></div>
+      <div class="logo-jp">ブラストファイターズ</div>
+    </div>
+    <div class="menu">
+      <button class="btn primary" data-action="to-select">あそぶ</button>
+      <button class="btn" data-action="to-howto">操作説明</button>
+    </div>
+    <p class="hint">Enter / タップでスタート</p>
+  </section>
+
+  <!-- 操作説明 -->
+  <section id="howto" class="screen">
+    <div class="panel">
+      <h2>操作説明</h2>
+      <p class="lead">相手をふっとばして<strong>画面の外</strong>へ出せば撃墜！ ダメージ%が高いほど遠くへ飛びます。</p>
+      <table class="keys">
+        <thead><tr><th></th><th>1P キーボード</th><th>2P キーボード</th><th>ゲームパッド</th></tr></thead>
+        <tbody>
+          <tr><th>移動</th><td>A / D</td><td>← / →</td><td>スティック / 十字</td></tr>
+          <tr><th>ジャンプ</th><td>W / Space</td><td>↑ / テンキー0</td><td>X / Y・上</td></tr>
+          <tr><th>しゃがみ・急降下</th><td>S</td><td>↓</td><td>下</td></tr>
+          <tr><th>攻撃</th><td>F</td><td>, / テンキー1</td><td>A</td></tr>
+          <tr><th>必殺技</th><td>G</td><td>. / テンキー2</td><td>B</td></tr>
+          <tr><th>シールド・回避</th><td>H</td><td>/ / テンキー3</td><td>LB / RB / LT / RT</td></tr>
+          <tr><th>ポーズ</th><td colspan="2">Esc / P</td><td>START</td></tr>
+        </tbody>
+      </table>
+      <ul class="tips">
+        <li><b>攻撃</b>は方向との組み合わせで変化（横＝スマッシュ、上＝アッパー、下＝ローキック、空中では5種類）。</li>
+        <li><b>上＋必殺技</b>は復帰技。ステージの外から戻るときに使おう。</li>
+        <li><b>シールド中に左右</b>で回避、<b>空中でシールド</b>で空中回避。</li>
+        <li>ステージの端に近づくと<b>ガケつかまり</b>。上でのぼる、ジャンプでガケジャンプ。</li>
+        <li>スマホでは画面のボタンで1Pを操作できます（横向き推奨）。</li>
+      </ul>
+      <button class="btn" data-action="to-title">もどる</button>
+    </div>
+  </section>
+
+  <!-- キャラクター選択 -->
+  <section id="select" class="screen">
+    <header class="select-head">
+      <button class="btn small" data-action="to-title">← もどる</button>
+      <h2>キャラクターをえらべ！</h2>
+      <div class="rules">
+        <label>ストック
+          <span class="stepper"><button data-rule="stocks" data-d="-1">−</button><b id="rule-stocks">3</b><button data-rule="stocks" data-d="1">＋</button></span>
+        </label>
+        <label>CPU Lv
+          <span class="stepper"><button data-rule="level" data-d="-1">−</button><b id="rule-level">5</b><button data-rule="level" data-d="1">＋</button></span>
+        </label>
+      </div>
+    </header>
+    <div id="slots" class="slots"></div>
+    <footer class="select-foot">
+      <button class="btn primary big" data-action="start">たたかう！</button>
+    </footer>
+  </section>
+
+  <!-- ポーズ -->
+  <section id="pause" class="screen">
+    <div class="panel narrow">
+      <h2>PAUSE</h2>
+      <button class="btn primary" data-action="resume">つづける</button>
+      <button class="btn" data-action="to-select">キャラ選択へ</button>
+      <button class="btn" data-action="to-title">タイトルへ</button>
+    </div>
+  </section>
+
+  <!-- 結果 -->
+  <section id="result" class="screen">
+    <div class="panel">
+      <div class="winner">
+        <canvas id="winner-portrait" width="220" height="220"></canvas>
+        <div>
+          <div class="winner-label">WINNER</div>
+          <div id="winner-name" class="winner-name"></div>
+        </div>
+      </div>
+      <table class="result-table">
+        <thead><tr><th>順位</th><th>プレイヤー</th><th>撃墜</th><th>落下</th><th>与ダメージ</th></tr></thead>
+        <tbody id="result-body"></tbody>
+      </table>
+      <div class="menu row">
+        <button class="btn primary" data-action="start">もう一度</button>
+        <button class="btn" data-action="to-select">キャラ選択へ</button>
+      </div>
+    </div>
+  </section>
+
+  <!-- タッチ操作 -->
+  <div id="touch" aria-hidden="true">
+    <div class="dpad">
+      <button data-touch="up" class="up">▲</button>
+      <button data-touch="left" class="left">◀</button>
+      <button data-touch="right" class="right">▶</button>
+      <button data-touch="down" class="down">▼</button>
+      <button data-touch="up left" class="ul"></button>
+      <button data-touch="up right" class="ur"></button>
+      <button data-touch="down left" class="dl"></button>
+      <button data-touch="down right" class="dr"></button>
+    </div>
+    <div class="abtns">
+      <button data-touch="attack" class="a">攻撃</button>
+      <button data-touch="special" class="b">必殺</button>
+      <button data-touch="jump" class="j">ジャンプ</button>
+      <button data-touch="shield" class="s">ガード</button>
+    </div>
+    <button id="touch-pause" class="tpause">Ⅱ</button>
+  </div>
+
+  <button id="mute" class="icon-btn" title="サウンド">🔊</button>
+  <div id="rotate">📱↻ 横向きにするともっと遊びやすくなります</div>
+
+  <script type="module" src="src/main.js"></script>
+</body>
+</html>
