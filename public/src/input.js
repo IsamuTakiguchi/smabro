@@ -63,42 +63,122 @@ export function gamepadSnapshot(index) {
 }
 
 // ---------------------------------------------------------------- タッチ
+// 左半分: 指を置いた場所に出るフローティングスティック（指が離れすぎると台座がついてくる）
+// 右半分: タップ位置にいちばん近いボタンが反応。指をすべらせるとボタンが切りかわる
 
 export const touchState = emptyInput();
-const touchHeld = { left: new Set(), right: new Set(), up: new Set(), down: new Set(), jump: new Set(), attack: new Set(), special: new Set(), shield: new Set() };
+const STICK_DEAD = 0.18; // 半径に対する遊び
+const BTN_MAX_DIST = 2.6; // ボタン半径の何倍まで反応するか
 
 export function initTouch(root) {
-  const buttons = root.querySelectorAll('[data-touch]');
-  const sync = () => {
-    touchState.x = (touchHeld.right.size ? 1 : 0) - (touchHeld.left.size ? 1 : 0);
-    touchState.y = (touchHeld.down.size ? 1 : 0) - (touchHeld.up.size ? 1 : 0);
-    touchState.jump = touchHeld.jump.size > 0;
-    touchState.attack = touchHeld.attack.size > 0;
-    touchState.special = touchHeld.special.size > 0;
-    touchState.shield = touchHeld.shield.size > 0;
-    for (const el of buttons) {
-      const on = el.dataset.touch.split(' ').every((k) => touchHeld[k].size > 0);
-      el.classList.toggle('on', on);
-    }
+  const stickEl = root.querySelector('.stick');
+  const knobEl = stickEl.querySelector('.knob');
+  const btnEls = [...root.querySelectorAll('[data-btn]')];
+  const stick = { id: null, ox: 0, oy: 0, x: 0, y: 0 };
+  const btnPointers = new Map(); // pointerId -> ボタン名
+
+  const radius = () => stickEl.offsetWidth / 2 || 64;
+
+  const placeIdleStick = () => {
+    const r = radius();
+    stickEl.style.left = `${Math.max(r + 24, window.innerWidth * 0.14)}px`;
+    stickEl.style.top = `${window.innerHeight - r - Math.min(150, window.innerHeight * 0.22)}px`;
+    knobEl.style.transform = '';
+    stickEl.classList.add('idle');
   };
-  for (const el of buttons) {
-    const names = el.dataset.touch.split(' ');
-    const down = (e) => {
-      e.preventDefault();
-      el.setPointerCapture?.(e.pointerId);
-      for (const n of names) touchHeld[n].add(e.pointerId);
+
+  const nearestButton = (x, y) => {
+    let best = null, bestD = Infinity;
+    for (const el of btnEls) {
+      const r = el.getBoundingClientRect();
+      const cx = r.left + r.width / 2, cy = r.top + r.height / 2;
+      const d = Math.hypot(x - cx, y - cy) / (r.width / 2);
+      if (d < bestD) { bestD = d; best = el.dataset.btn; }
+    }
+    return bestD <= BTN_MAX_DIST ? best : null;
+  };
+
+  const sync = () => {
+    touchState.x = stick.x;
+    touchState.y = stick.y;
+    const held = new Set(btnPointers.values());
+    for (const k of ['attack', 'special', 'jump', 'shield']) touchState[k] = held.has(k);
+    for (const el of btnEls) el.classList.toggle('on', held.has(el.dataset.btn));
+  };
+
+  const moveStick = (x, y) => {
+    const r = radius();
+    let dx = x - stick.ox, dy = y - stick.oy;
+    const d = Math.hypot(dx, dy);
+    if (d > r) { // 台座を指に追従させる
+      stick.ox = x - (dx / d) * r;
+      stick.oy = y - (dy / d) * r;
+      dx = x - stick.ox; dy = y - stick.oy;
+      stickEl.style.left = `${stick.ox}px`;
+      stickEl.style.top = `${stick.oy}px`;
+    }
+    knobEl.style.transform = `translate(${dx}px, ${dy}px)`;
+    const m = Math.hypot(dx, dy) / r;
+    if (m < STICK_DEAD) { stick.x = 0; stick.y = 0; return; }
+    // 少し傾けただけでしっかり入るよう増幅
+    const k = Math.min(1, ((m - STICK_DEAD) / (0.7 - STICK_DEAD))) / m;
+    stick.x = Math.max(-1, Math.min(1, (dx / r) * k));
+    stick.y = Math.max(-1, Math.min(1, (dy / r) * k));
+  };
+
+  const left = root.querySelector('.left-zone');
+  left.addEventListener('pointerdown', (e) => {
+    e.preventDefault();
+    if (stick.id !== null) return;
+    left.setPointerCapture?.(e.pointerId);
+    stick.id = e.pointerId;
+    stick.ox = e.clientX; stick.oy = e.clientY;
+    stickEl.style.left = `${stick.ox}px`;
+    stickEl.style.top = `${stick.oy}px`;
+    stickEl.classList.remove('idle');
+    moveStick(e.clientX, e.clientY);
+    sync();
+  });
+  left.addEventListener('pointermove', (e) => {
+    if (e.pointerId !== stick.id) return;
+    moveStick(e.clientX, e.clientY);
+    sync();
+  });
+  const endStick = (e) => {
+    if (e.pointerId !== stick.id) return;
+    stick.id = null; stick.x = 0; stick.y = 0;
+    placeIdleStick();
+    sync();
+  };
+  for (const ev of ['pointerup', 'pointercancel', 'lostpointercapture']) left.addEventListener(ev, endStick);
+
+  const right = root.querySelector('.right-zone');
+  right.addEventListener('pointerdown', (e) => {
+    e.preventDefault();
+    right.setPointerCapture?.(e.pointerId);
+    const b = nearestButton(e.clientX, e.clientY);
+    btnPointers.set(e.pointerId, b);
+    if (b) navigator.vibrate?.(8);
+    sync();
+  });
+  right.addEventListener('pointermove', (e) => {
+    if (!btnPointers.has(e.pointerId)) return;
+    const b = nearestButton(e.clientX, e.clientY);
+    if (b !== btnPointers.get(e.pointerId)) {
+      btnPointers.set(e.pointerId, b);
+      if (b) navigator.vibrate?.(6);
       sync();
-      navigator.vibrate?.(8);
-    };
-    const up = (e) => {
-      for (const n of names) touchHeld[n].delete(e.pointerId);
-      sync();
-    };
-    el.addEventListener('pointerdown', down);
-    el.addEventListener('pointerup', up);
-    el.addEventListener('pointercancel', up);
-    el.addEventListener('lostpointercapture', up);
-  }
+    }
+  });
+  const endBtn = (e) => {
+    if (!btnPointers.delete(e.pointerId)) return;
+    sync();
+  };
+  for (const ev of ['pointerup', 'pointercancel', 'lostpointercapture']) right.addEventListener(ev, endBtn);
+
+  window.addEventListener('resize', () => { if (stick.id === null) placeIdleStick(); });
+  placeIdleStick();
+  return { reset: () => { stick.id = null; stick.x = stick.y = 0; btnPointers.clear(); placeIdleStick(); sync(); } };
 }
 
 // ---------------------------------------------------------------- コントローラ

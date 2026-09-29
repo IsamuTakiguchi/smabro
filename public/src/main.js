@@ -50,6 +50,7 @@ function saveConfig() {
 function setScreen(s) {
   screen = s;
   document.body.dataset.screen = s;
+  if (s === 'battle') touch.reset();
   if (s === 'select') buildSlots();
   if (s === 'title' || s === 'select' || s === 'howto') ensureDemo();
 }
@@ -339,7 +340,7 @@ document.addEventListener('visibilitychange', () => {
 const isTouch = 'ontouchstart' in window || navigator.maxTouchPoints > 0;
 if (isTouch) document.body.classList.add('touch');
 initKeyboard();
-initTouch($('#touch'));
+const touch = initTouch($('#touch'));
 window.addEventListener('resize', () => renderer.resize());
 setScreen('title');
 requestAnimationFrame(frame);

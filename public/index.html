@@ -48,7 +48,7 @@
         <li><b>上＋必殺技</b>は復帰技。ステージの外から戻るときに使おう。</li>
         <li><b>シールド中に左右</b>で回避、<b>空中でシールド</b>で空中回避。</li>
         <li>ステージの端に近づくと<b>ガケつかまり</b>。上でのぼる、ジャンプでガケジャンプ。</li>
-        <li>スマホでは画面のボタンで1Pを操作できます（横向き推奨）。</li>
+        <li>タブレット・スマホでは、<b>画面の左半分のどこでも</b>指を置くとスティックになり、<b>右半分</b>はタップした位置にいちばん近いボタンが反応します（指をすべらせてボタンを切りかえ可能）。</li>
       </ul>
       <button class="btn" data-action="to-title">もどる</button>
     </div>
@@ -105,23 +105,16 @@
     </div>
   </section>
 
-  <!-- タッチ操作 -->
+  <!-- タッチ操作（左半分：どこでも出るスティック／右半分：いちばん近いボタンが反応） -->
   <div id="touch" aria-hidden="true">
-    <div class="dpad">
-      <button data-touch="up" class="up">▲</button>
-      <button data-touch="left" class="left">◀</button>
-      <button data-touch="right" class="right">▶</button>
-      <button data-touch="down" class="down">▼</button>
-      <button data-touch="up left" class="ul"></button>
-      <button data-touch="up right" class="ur"></button>
-      <button data-touch="down left" class="dl"></button>
-      <button data-touch="down right" class="dr"></button>
-    </div>
+    <div class="tzone left-zone"></div>
+    <div class="tzone right-zone"></div>
+    <div class="stick idle"><div class="knob"></div></div>
     <div class="abtns">
-      <button data-touch="attack" class="a">攻撃</button>
-      <button data-touch="special" class="b">必殺</button>
-      <button data-touch="jump" class="j">ジャンプ</button>
-      <button data-touch="shield" class="s">ガード</button>
+      <div data-btn="attack" class="tbtn a">攻撃</div>
+      <div data-btn="special" class="tbtn b">必殺</div>
+      <div data-btn="jump" class="tbtn j">ジャンプ</div>
+      <div data-btn="shield" class="tbtn s">ガード</div>
     </div>
     <button id="touch-pause" class="tpause">Ⅱ</button>
   </div>
