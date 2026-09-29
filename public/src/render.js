@@ -26,6 +26,14 @@ export class Renderer {
     this.dpr = dpr;
   }
 
+  // 画面回転などでキャンバスの表示サイズと解像度がずれたら合わせ直す（横長につぶれるのを防ぐ）
+  ensureSize() {
+    const dpr = Math.min(window.devicePixelRatio || 1, 2);
+    const w = Math.max(1, Math.round(this.canvas.clientWidth * dpr));
+    const h = Math.max(1, Math.round(this.canvas.clientHeight * dpr));
+    if (w !== this.canvas.width || h !== this.canvas.height || dpr !== this.dpr) this.resize();
+  }
+
   get W() { return this.canvas.width; }
   get H() { return this.canvas.height; }
   get compact() { return this.H / this.dpr < 500 || this.W / this.dpr < 700; }
@@ -155,6 +163,7 @@ export class Renderer {
 
   // ------------------------------------------------------------ 描画
   draw(game, opts = {}) {
+    this.ensureSize();
     const ctx = this.ctx;
     this.time++;
     ctx.setTransform(1, 0, 0, 1, 0, 0);

@@ -3,7 +3,8 @@ import { Game, CHARACTERS, FPS } from './engine.js';
 import { CPUController } from './ai.js';
 import { HumanController, initKeyboard, initTouch, isKeyDown, gamepadSnapshot } from './input.js';
 import { Renderer, SLOT_COLORS, drawPortrait } from './render.js';
-import { sfx, unlockAudio, setMuted, muted } from './audio.js';
+import { sfx, unlockAudio, setMuted, muted, suspendAudio } from './audio.js';
+import { playMusic, stopMusic, duckMusic, crowdAmbience, cheer, applause, victoryFanfare } from './music.js';
 import { NetHost, NetGuest, NetController, packSnapshot, applySnapshot, normalizeCode } from './net.js';
 
 const $ = (s) => document.querySelector(s);
@@ -11,7 +12,11 @@ const canvas = $('#game');
 const renderer = new Renderer(canvas);
 const silent = new Proxy({}, { get: () => () => {} });
 
-const TYPES = ['human', 'cpu', 'off'];
+// タップでの切りかえ順。3P・4P はキーボードがないので「なし」→「CPU」を先にする
+const nextType = (i, t) => {
+  const order = i === 0 ? ['human', 'cpu', 'off'] : ['cpu', 'human', 'off'];
+  return order[(order.indexOf(t) + 1) % order.length];
+};
 const TYPE_LABEL = { human: 'プレイヤー', cpu: 'CPU', off: 'なし', host: 'ホスト', remote: 'オンライン' };
 const config = loadConfig();
 
@@ -56,12 +61,44 @@ function saveConfig() {
 // ---------------------------------------------------------------- 画面
 
 function setScreen(s) {
+  const prev = screen;
   screen = s;
   document.body.dataset.screen = s;
+  updateSound(prev, s);
   if (isHost() && (s === 'select' || s === 'pause' || s === 'battle')) net.host.broadcast({ t: 'screen', s });
   if (s === 'battle') touch.reset();
   if (s === 'select') buildSlots();
   if (s === 'title' || s === 'select' || s === 'howto' || s === 'online') ensureDemo();
+}
+
+// 画面に合わせて BGM・観客の音を切りかえる
+function updateSound(prev, s) {
+  if (s === 'battle') {
+    duckMusic(false);
+    if (prev !== 'pause') playMusic('battle');
+    crowdAmbience(true);
+  } else if (s === 'pause') {
+    duckMusic(true);
+  } else if (s === 'result') {
+    stopMusic(1.2);
+    crowdAmbience(false);
+    victoryFanfare();
+    cheer(1);
+    applause(4.5, 1);
+  } else {
+    duckMusic(false);
+    crowdAmbience(false);
+    playMusic('menu');
+  }
+}
+
+// 大きな一撃や撃墜で観客がわく
+function crowdReact(events) {
+  for (const e of events) {
+    if (e.type === 'hit' && e.kb > 150) cheer(Math.min(0.7, 0.3 + (e.kb - 150) / 250));
+    else if (e.type === 'ko') { cheer(0.9); applause(1.8, 0.5); }
+    else if (e.type === 'counter' || e.type === 'shieldbreak') cheer(0.4);
+  }
 }
 
 function ensureDemo() {
@@ -89,7 +126,7 @@ function buildSlots() {
     el.innerHTML = `
       <div class="slot-top">
         <span class="slot-label">${slot.type === 'cpu' ? 'CP' : `${i + 1}P`}</span>
-        <button class="type-btn" ${canEditType(i) ? '' : 'disabled'}>${net && i === net.mySlot ? 'あなた' : TYPE_LABEL[slot.type]}</button>
+        <button class="type-btn" ${canEditType(i) ? '' : 'disabled'}>${net && i === net.mySlot ? 'あなた' : (slot.type === 'human' && i >= 2 ? 'プレイヤー(パッド)' : TYPE_LABEL[slot.type])}</button>
       </div>
       <canvas class="portrait" width="240" height="240"></canvas>
       <div class="char-row">
@@ -105,9 +142,17 @@ function buildSlots() {
     if (net && i === net.mySlot) el.classList.add('mine');
     el.querySelector('.type-btn').onclick = () => {
       if (!canEditType(i)) return;
-      slot.type = TYPES[(TYPES.indexOf(slot.type) + 1) % TYPES.length];
+      slot.type = nextType(i, slot.type);
       sfx.select(); lobbyChanged();
     };
+    if (slot.type === 'off') {
+      // 空き枠はカードのどこをタップしても CPU で参戦
+      el.addEventListener('click', (e) => {
+        if (e.target.closest('button') || !canEditType(i)) return;
+        slot.type = 'cpu'; sfx.select(); lobbyChanged();
+      });
+      el.insertAdjacentHTML('beforeend', canEditType(i) ? '<div class="join-hint">タップでCPU参戦</div>' : '');
+    }
     el.querySelector('.prev').onclick = () => changeChar(i, -1);
     el.querySelector('.next').onclick = () => changeChar(i, 1);
     root.appendChild(el);
@@ -387,7 +432,7 @@ function guestTick(withEffects) {
   net.snaps = [];
   for (const s of snaps) {
     const ev = applySnapshot(game, s);
-    if (withEffects) renderer.handleEvents(ev, sfx);
+    if (withEffects) { renderer.handleEvents(ev, sfx); crowdReact(ev); }
   }
 }
 
@@ -401,7 +446,7 @@ function tick() {
       const after = Math.ceil(countdown / FPS);
       if (countdown === FPS * 3 - 1) sfx.count();
       else if (after !== before && after > 0) sfx.count();
-      if (countdown === 0) { sfx.go(); goTimer = 50; }
+      if (countdown === 0) { sfx.go(); cheer(0.5); goTimer = 50; }
       renderer.updateCamera(game);
       renderer.updateParticles();
       return;
@@ -428,6 +473,7 @@ function tick() {
     game.step();
     if (isHost()) net.host.broadcast({ t: 'snap', s: packSnapshot(game, game.events) });
     renderer.handleEvents(game.events, sfx);
+    crowdReact(game.events);
     game.events.length = 0;
     renderer.updateParticles();
     renderer.updateCamera(game);
@@ -583,6 +629,7 @@ muteBtn.addEventListener('click', (e) => {
 });
 
 document.addEventListener('visibilitychange', () => {
+  suspendAudio(document.hidden);
   if (document.hidden && screen === 'battle' && !isGuest()) togglePause();
 });
 
@@ -603,6 +650,7 @@ if (isTouch) document.body.classList.add('touch');
 initKeyboard();
 const touch = initTouch($('#touch'));
 window.addEventListener('resize', () => renderer.resize());
+window.addEventListener('orientationchange', () => setTimeout(() => renderer.resize(), 250));
 const roomParam = normalizeCode(new URLSearchParams(location.search).get('room'));
 if (roomParam.length === 4) {
   setScreen('online');
