@@ -20,7 +20,8 @@
       <div class="logo-jp">ブラストファイターズ</div>
     </div>
     <div class="menu">
-      <button class="btn primary" data-action="to-select">あそぶ</button>
+      <button class="btn primary" data-action="to-select">ひとつの端末であそぶ</button>
+      <button class="btn online" data-action="to-online">オンライン対戦（複数端末）</button>
       <button class="btn" data-action="to-howto">操作説明</button>
     </div>
     <p class="hint">Enter / タップでスタート</p>
@@ -40,6 +41,7 @@
           <tr><th>攻撃</th><td>F</td><td>, / テンキー1</td><td>A</td></tr>
           <tr><th>必殺技</th><td>G</td><td>. / テンキー2</td><td>B</td></tr>
           <tr><th>シールド・回避</th><td>H</td><td>/ / テンキー3</td><td>LB / RB / LT / RT</td></tr>
+          <tr><th>オンライン対戦</th><td colspan="3">タイトルの「オンライン対戦」→ 1台が部屋をつくり、ほかの端末は4文字の部屋コード（または招待URL）で参加</td></tr>
           <tr><th>ポーズ</th><td colspan="2">Esc / P</td><td>START</td></tr>
         </tbody>
       </table>
@@ -54,11 +56,32 @@
     </div>
   </section>
 
+  <!-- オンライン対戦 -->
+  <section id="online" class="screen">
+    <div class="panel narrow online-panel">
+      <h2>オンライン対戦</h2>
+      <p class="lead">タブレットやスマホ、PCをつないで最大4人で対戦できます。1台が「部屋をつくる」、ほかの端末は部屋コードで参加してください。</p>
+      <button class="btn primary" data-action="host">部屋をつくる</button>
+      <div class="or">または</div>
+      <div class="join-row">
+        <input id="join-code" maxlength="4" autocomplete="off" autocapitalize="characters" spellcheck="false" placeholder="コード" inputmode="text">
+        <button class="btn" data-action="join">参加する</button>
+      </div>
+      <p id="online-status" class="status"></p>
+      <button class="btn small" data-action="to-title">もどる</button>
+    </div>
+  </section>
+
   <!-- キャラクター選択 -->
   <section id="select" class="screen">
     <header class="select-head">
-      <button class="btn small" data-action="to-title">← もどる</button>
+      <button class="btn small" data-action="to-title"><span class="offline-only">← もどる</span><span class="online-only">退出</span></button>
       <h2>キャラクターをえらべ！</h2>
+      <div class="room online-only">
+        <span class="room-label">部屋コード</span><b id="room-code">----</b>
+        <span id="room-count" class="room-count"></span>
+        <button id="share-btn" class="btn small" data-action="share">招待URLを共有</button>
+      </div>
       <div class="rules">
         <label>ストック
           <span class="stepper"><button data-rule="stocks" data-d="-1">−</button><b id="rule-stocks">3</b><button data-rule="stocks" data-d="1">＋</button></span>
@@ -70,7 +93,8 @@
     </header>
     <div id="slots" class="slots"></div>
     <footer class="select-foot">
-      <button class="btn primary big" data-action="start">たたかう！</button>
+      <button class="btn primary big host-only" data-action="start">たたかう！</button>
+      <p class="waiting guest-only">ホストが対戦を始めるのを待っています…</p>
     </footer>
   </section>
 
@@ -79,8 +103,10 @@
     <div class="panel narrow">
       <h2>PAUSE</h2>
       <button class="btn primary" data-action="resume">つづける</button>
-      <button class="btn" data-action="to-select">キャラ選択へ</button>
-      <button class="btn" data-action="to-title">タイトルへ</button>
+      <button class="btn host-only" data-action="to-select">キャラ選択へ</button>
+      <button class="btn offline-only" data-action="to-title">タイトルへ</button>
+      <button class="btn online-only" data-action="leave">部屋から退出</button>
+      <p class="waiting guest-only">オンライン対戦中はゲームは止まりません</p>
     </div>
   </section>
 
@@ -98,10 +124,11 @@
         <thead><tr><th>順位</th><th>プレイヤー</th><th>撃墜</th><th>落下</th><th>与ダメージ</th></tr></thead>
         <tbody id="result-body"></tbody>
       </table>
-      <div class="menu row">
+      <div class="menu row host-only">
         <button class="btn primary" data-action="start">もう一度</button>
         <button class="btn" data-action="to-select">キャラ選択へ</button>
       </div>
+      <p class="waiting guest-only">ホストの操作を待っています…</p>
     </div>
   </section>
 

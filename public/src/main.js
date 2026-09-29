@@ -4,6 +4,7 @@ import { CPUController } from './ai.js';
 import { HumanController, initKeyboard, initTouch, isKeyDown, gamepadSnapshot } from './input.js';
 import { Renderer, SLOT_COLORS, drawPortrait } from './render.js';
 import { sfx, unlockAudio, setMuted, muted } from './audio.js';
+import { NetHost, NetGuest, NetController, packSnapshot, applySnapshot, normalizeCode } from './net.js';
 
 const $ = (s) => document.querySelector(s);
 const canvas = $('#game');
@@ -11,7 +12,7 @@ const renderer = new Renderer(canvas);
 const silent = new Proxy({}, { get: () => () => {} });
 
 const TYPES = ['human', 'cpu', 'off'];
-const TYPE_LABEL = { human: 'プレイヤー', cpu: 'CPU', off: 'なし' };
+const TYPE_LABEL = { human: 'プレイヤー', cpu: 'CPU', off: 'なし', host: 'ホスト', remote: 'オンライン' };
 const config = loadConfig();
 
 let screen = 'title';
@@ -21,6 +22,13 @@ let countdown = 0;
 let goTimer = 0;
 let endTimer = 0;
 let slowTick = 0;
+
+// オンライン対戦の状態（null ならオフライン）
+// { role: 'host'|'guest', host|guest, code, lobby, mySlot, remoteCtrls, snaps, localCtrl, lastSent }
+let net = null;
+const cfg = () => (net ? net.lobby : config);
+const isHost = () => net?.role === 'host';
+const isGuest = () => net?.role === 'guest';
 
 // ---------------------------------------------------------------- 設定
 
@@ -50,9 +58,10 @@ function saveConfig() {
 function setScreen(s) {
   screen = s;
   document.body.dataset.screen = s;
+  if (isHost() && (s === 'select' || s === 'pause' || s === 'battle')) net.host.broadcast({ t: 'screen', s });
   if (s === 'battle') touch.reset();
   if (s === 'select') buildSlots();
-  if (s === 'title' || s === 'select' || s === 'howto') ensureDemo();
+  if (s === 'title' || s === 'select' || s === 'howto' || s === 'online') ensureDemo();
 }
 
 function ensureDemo() {
@@ -68,7 +77,10 @@ function ensureDemo() {
 function buildSlots() {
   const root = $('#slots');
   root.innerHTML = '';
-  config.slots.forEach((slot, i) => {
+  const c0 = cfg();
+  if (!c0) return;
+  updateRoomInfo();
+  c0.slots.forEach((slot, i) => {
     const c = CHARACTERS[slot.char];
     const el = document.createElement('div');
     el.className = `slot ${slot.type === 'off' ? 'off' : ''}`;
@@ -77,65 +89,110 @@ function buildSlots() {
     el.innerHTML = `
       <div class="slot-top">
         <span class="slot-label">${slot.type === 'cpu' ? 'CP' : `${i + 1}P`}</span>
-        <button class="type-btn">${TYPE_LABEL[slot.type]}</button>
+        <button class="type-btn" ${canEditType(i) ? '' : 'disabled'}>${net && i === net.mySlot ? 'あなた' : TYPE_LABEL[slot.type]}</button>
       </div>
       <canvas class="portrait" width="240" height="240"></canvas>
       <div class="char-row">
-        <button class="prev" aria-label="前のキャラ">◀</button>
+        <button class="prev" aria-label="前のキャラ" ${canEditChar(i) ? '' : 'disabled'}>◀</button>
         <span class="char-name">${c.name}</span>
-        <button class="next" aria-label="次のキャラ">▶</button>
+        <button class="next" aria-label="次のキャラ" ${canEditChar(i) ? '' : 'disabled'}>▶</button>
       </div>
       <div class="char-info">
         <div class="title">${c.title}</div>
         <div>${c.desc}</div>
         <div class="specials">必殺: ${c.specialNames.join(' / ')}</div>
       </div>`;
+    if (net && i === net.mySlot) el.classList.add('mine');
     el.querySelector('.type-btn').onclick = () => {
+      if (!canEditType(i)) return;
       slot.type = TYPES[(TYPES.indexOf(slot.type) + 1) % TYPES.length];
-      sfx.select(); saveConfig(); buildSlots();
+      sfx.select(); lobbyChanged();
     };
     el.querySelector('.prev').onclick = () => changeChar(i, -1);
     el.querySelector('.next').onclick = () => changeChar(i, 1);
     root.appendChild(el);
   });
-  $('#rule-stocks').textContent = config.stocks;
-  $('#rule-level').textContent = config.level;
+  $('#rule-stocks').textContent = c0.stocks;
+  $('#rule-level').textContent = c0.level;
   drawPortraits();
 }
 
+function canEditType(i) {
+  if (!net) return true;
+  if (isGuest()) return false;
+  return !['host', 'remote'].includes(net.lobby.slots[i].type);
+}
+
+function canEditChar(i) {
+  if (!net) return true;
+  if (isGuest()) return i === net.mySlot;
+  return net.lobby.slots[i].type !== 'remote';
+}
+
+// 設定が変わったときの保存・同期
+function lobbyChanged() {
+  if (!net) saveConfig();
+  else if (isHost()) net.host.broadcast({ t: 'lobby', lobby: net.lobby });
+  if (screen === 'select') buildSlots();
+}
+
 function changeChar(i, d) {
-  const s = config.slots[i];
+  if (!cfg() || !canEditChar(i)) return;
+  const s = cfg().slots[i];
   s.char = (s.char + d + CHARACTERS.length) % CHARACTERS.length;
-  if (s.type === 'off') s.type = i === 0 ? 'human' : 'cpu';
-  sfx.select(); saveConfig(); buildSlots();
+  if (s.type === 'off' && !isGuest()) s.type = i === 0 ? 'human' : 'cpu';
+  sfx.select();
+  if (isGuest()) { net.guest.send({ t: 'char', char: s.char }); buildSlots(); } else lobbyChanged();
 }
 
 let portraitFrame = 0;
 function drawPortraits() {
   portraitFrame++;
   document.querySelectorAll('#slots .portrait').forEach((cv, i) => {
-    drawPortrait(cv, CHARACTERS[config.slots[i].char], portraitFrame);
+    drawPortrait(cv, CHARACTERS[cfg().slots[i].char], portraitFrame);
   });
 }
 
 // ---------------------------------------------------------------- 対戦
 
-function startBattle() {
+function makePlayers(l, makeController) {
   const players = [];
-  config.slots.forEach((s, i) => {
+  l.slots.forEach((s, i) => {
     if (s.type === 'off') return;
-    players.push({
-      slot: i,
-      char: CHARACTERS[s.char].id,
-      controller: s.type === 'human' ? new HumanController(i) : new CPUController(config.level),
-    });
+    players.push({ slot: i, char: CHARACTERS[s.char].id, controller: makeController(s, i) });
+  });
+  return players;
+}
+
+function startBattle() {
+  if (isGuest()) return;
+  const l = cfg();
+  if (isHost()) net.remoteCtrls = {};
+  const players = makePlayers(l, (s, i) => {
+    if (s.type === 'cpu') return new CPUController(l.level);
+    if (s.type === 'remote') return (net.remoteCtrls[i] = new NetController());
+    return new HumanController(s.type === 'host' ? 0 : i);
   });
   if (players.length < 2) {
-    alert('2人以上そろえてね！（「なし」をタップしてCPUにできます）');
+    alert(net ? '2人以上そろえてね！（参加を待つか「なし」をタップしてCPUにできます）' : '2人以上そろえてね！（「なし」をタップしてCPUにできます）');
     return;
   }
+  if (isHost()) net.host.broadcast({ t: 'start', lobby: l });
+  beginBattle(new Game({ players, stocks: l.stocks }));
+}
+
+// 参加端末: ホストから届いた設定で表示用のゲームを組み立てる（計算はしない）
+function startGuestBattle(l) {
+  net.lobby = l;
+  net.snaps = [];
+  net.lastSent = '';
+  const players = makePlayers(l, (s) => (s.type === 'cpu' ? new CPUController(l.level) : null));
+  beginBattle(new Game({ players, stocks: l.stocks }));
+}
+
+function beginBattle(g) {
   unlockAudio();
-  game = new Game({ players, stocks: config.stocks });
+  game = g;
   renderer.particles = [];
   renderer.updateCamera(game, true);
   countdown = FPS * 3;
@@ -167,6 +224,173 @@ function togglePause() {
   else if (screen === 'pause') { setScreen('battle'); sfx.select(); }
 }
 
+// ---------------------------------------------------------------- オンライン
+
+function setNetClasses() {
+  document.body.classList.toggle('net', !!net);
+  document.body.classList.toggle('net-host', isHost());
+  document.body.classList.toggle('net-guest', isGuest());
+}
+
+function onlineStatus(msg, err = false) {
+  const el = $('#online-status');
+  el.textContent = msg;
+  el.classList.toggle('error', err);
+}
+
+function shareUrl(code) {
+  const u = new URL(location.href);
+  u.search = '';
+  if (new URLSearchParams(location.search).get('net') === 'local') u.searchParams.set('net', 'local');
+  u.searchParams.set('room', code);
+  return u.toString();
+}
+
+function updateRoomInfo() {
+  if (!net) return;
+  $('#room-code').textContent = net.code;
+  const n = net.lobby.slots.filter((s) => s.type === 'remote' || s.type === 'host').length;
+  $('#room-count').textContent = `${n}人接続中`;
+}
+
+async function hostRoom() {
+  if (net) return;
+  onlineStatus('部屋をつくっています…');
+  const host = new NetHost();
+  net = {
+    role: 'host', host, code: '', mySlot: 0, remoteCtrls: {},
+    lobby: {
+      stocks: config.stocks, level: config.level,
+      slots: [
+        { type: 'host', char: config.slots[0].char },
+        { type: 'off', char: 1 }, { type: 'off', char: 2 }, { type: 'off', char: 3 },
+      ],
+    },
+  };
+  host.on('join', (id) => {
+    const free = net.lobby.slots.findIndex((s, i) => i > 0 && s.type === 'off');
+    const free2 = free >= 0 ? free : net.lobby.slots.findIndex((s, i) => i > 0 && s.type === 'cpu');
+    if (screen !== 'select' || free2 < 0) {
+      host.send(id, { t: 'reject', reason: free2 < 0 ? '部屋がいっぱいです' : '対戦中です。終わるまで待ってね' });
+      setTimeout(() => host.kick(id), 300);
+      return;
+    }
+    net.lobby.slots[free2] = { type: 'remote', char: net.lobby.slots[free2].char, peer: id };
+    host.send(id, { t: 'welcome', slot: free2, lobby: net.lobby, code: net.code });
+    sfx.select();
+    lobbyChanged();
+  });
+  host.on('message', (id, m) => {
+    const slot = net.lobby.slots.findIndex((s) => s.peer === id);
+    if (slot < 0) return;
+    if (m.t === 'in') net.remoteCtrls[slot]?.push(m.i);
+    else if (m.t === 'char' && screen === 'select') {
+      net.lobby.slots[slot].char = ((m.char | 0) % CHARACTERS.length + CHARACTERS.length) % CHARACTERS.length;
+      lobbyChanged();
+    }
+  });
+  host.on('leave', (id) => {
+    if (!net) return;
+    const slot = net.lobby.slots.findIndex((s) => s.peer === id);
+    if (slot < 0) return;
+    const inBattle = game && !game.over && (screen === 'battle' || screen === 'pause');
+    // 対戦中に抜けたプレイヤーは CPU が引きつぐ
+    net.lobby.slots[slot] = { type: inBattle ? 'cpu' : 'off', char: net.lobby.slots[slot].char };
+    if (inBattle) {
+      const f = game.fighters.find((x) => x.slot === slot);
+      if (f) f.controller = new CPUController(net.lobby.level);
+    }
+    delete net.remoteCtrls[slot];
+    lobbyChanged();
+  });
+  try {
+    net.code = await host.open();
+    setNetClasses();
+    onlineStatus('');
+    setScreen('select');
+  } catch (e) {
+    host.close();
+    net = null;
+    onlineStatus(`部屋をつくれませんでした（${e.message || e.type || e}）`, true);
+  }
+}
+
+async function joinRoom(raw) {
+  if (net) return;
+  const code = normalizeCode(raw);
+  if (code.length !== 4) { onlineStatus('4文字の部屋コードを入力してね', true); return; }
+  onlineStatus(`部屋 ${code} に接続しています…`);
+  const guest = new NetGuest();
+  net = { role: 'guest', guest, code, mySlot: -1, lobby: null, snaps: [], localCtrl: new HumanController(0), lastSent: '' };
+  guest.on('message', (m) => {
+    if (!net || net.guest !== guest) return;
+    if (m.t === 'welcome') {
+      net.mySlot = m.slot; net.lobby = m.lobby;
+      setNetClasses();
+      onlineStatus('');
+      sfx.select();
+      setScreen('select');
+    } else if (m.t === 'reject') {
+      leaveOnline(m.reason);
+    } else if (m.t === 'lobby') {
+      net.lobby = m.lobby;
+      if (screen === 'select') buildSlots();
+    } else if (m.t === 'start') {
+      startGuestBattle(m.lobby);
+    } else if (m.t === 'snap') {
+      if (game) { net.snaps.push(m.s); if (net.snaps.length > 30) net.snaps.splice(0, net.snaps.length - 30); }
+    } else if (m.t === 'screen') {
+      if (m.s === 'select') setScreen('select');
+      else if (m.s === 'pause' && screen === 'battle') setScreen('pause');
+      else if (m.s === 'battle' && screen === 'pause') setScreen('battle');
+    }
+  });
+  guest.on('close', () => { if (net && net.guest === guest) leaveOnline('ホストとの接続が切れました'); });
+  try {
+    await guest.join(code);
+  } catch (e) {
+    guest.close();
+    if (net && net.guest === guest) net = null;
+    onlineStatus(e.message || '接続できませんでした', true);
+  }
+}
+
+function leaveOnline(message) {
+  if (!net) return;
+  const n = net;
+  net = null;
+  if (n.host) n.host.close();
+  if (n.guest) n.guest.close();
+  setNetClasses();
+  if (new URLSearchParams(location.search).has('room')) {
+    const u = new URL(location.href); u.searchParams.delete('room'); history.replaceState(null, '', u);
+  }
+  setScreen(message ? 'online' : 'title');
+  if (message) onlineStatus(message, true);
+}
+
+function confirmLeave() {
+  if (!net) return true;
+  if (!confirm(isHost() ? '部屋を閉じますか？（参加者との接続が切れます）' : '部屋から退出しますか？')) return false;
+  leaveOnline();
+  return true;
+}
+
+// 参加端末: 自分の入力を送り、届いた状態を反映する
+function guestTick(withEffects) {
+  if (screen === 'battle') {
+    const i = net.localCtrl.poll();
+    const key = JSON.stringify(i);
+    if (key !== net.lastSent) { net.guest.send({ t: 'in', i }); net.lastSent = key; }
+  }
+  const snaps = net.snaps;
+  net.snaps = [];
+  for (const s of snaps) {
+    const ev = applySnapshot(game, s);
+    if (withEffects) renderer.handleEvents(ev, sfx);
+  }
+}
+
 // ---------------------------------------------------------------- ループ
 
 function tick() {
@@ -183,6 +407,17 @@ function tick() {
       return;
     }
     if (goTimer > 0) goTimer--;
+    if (isGuest()) {
+      guestTick(true);
+      if (game.over) {
+        endTimer++;
+        if (endTimer === 1) sfx.game();
+        if (endTimer > 170) { showResult(); return; }
+      }
+      renderer.updateParticles();
+      renderer.updateCamera(game);
+      return;
+    }
     if (game.over) {
       endTimer++;
       if (endTimer === 1) sfx.game();
@@ -191,10 +426,13 @@ function tick() {
       if (endTimer > 170) { showResult(); return; }
     }
     game.step();
+    if (isHost()) net.host.broadcast({ t: 'snap', s: packSnapshot(game, game.events) });
     renderer.handleEvents(game.events, sfx);
     game.events.length = 0;
     renderer.updateParticles();
     renderer.updateCamera(game);
+  } else if (screen === 'pause' && isGuest() && game) {
+    guestTick(false);
   } else if (screen !== 'pause' && screen !== 'result') {
     ensureDemo();
     demo.step();
@@ -264,10 +502,11 @@ function pollGamepadMenu() {
       if (screen === 'title') { unlockAudio(); setScreen('select'); }
       else if (screen === 'result') startBattle();
     }
-    if (b && !p.b && screen === 'select') setScreen('title');
+    if (b && !p.b && screen === 'select' && !net) setScreen('title');
     if (screen === 'select') {
-      if (left && !p.left) changeChar(i, -1);
-      if (right && !p.right) changeChar(i, 1);
+      const target = net ? (i === 0 ? net.mySlot : -1) : i;
+      if (target >= 0 && left && !p.left) changeChar(target, -1);
+      if (target >= 0 && right && !p.right) changeChar(target, 1);
     }
     padPrev[i] = { start, a, b, left, right };
   }
@@ -281,29 +520,40 @@ document.addEventListener('click', (e) => {
     return;
   }
   if (btn.dataset.rule) {
+    if (isGuest()) return;
+    const c0 = cfg();
     const d = Number(btn.dataset.d);
-    if (btn.dataset.rule === 'stocks') config.stocks = Math.max(1, Math.min(9, config.stocks + d));
-    if (btn.dataset.rule === 'level') config.level = Math.max(1, Math.min(9, config.level + d));
-    $('#rule-stocks').textContent = config.stocks;
-    $('#rule-level').textContent = config.level;
-    sfx.select(); saveConfig();
+    if (btn.dataset.rule === 'stocks') c0.stocks = Math.max(1, Math.min(9, c0.stocks + d));
+    if (btn.dataset.rule === 'level') c0.level = Math.max(1, Math.min(9, c0.level + d));
+    $('#rule-stocks').textContent = c0.stocks;
+    $('#rule-level').textContent = c0.level;
+    sfx.select(); lobbyChanged();
     return;
   }
   const act = btn.dataset.action;
   sfx.select();
-  if (act === 'to-select') setScreen('select');
-  else if (act === 'to-title') setScreen('title');
+  if (act === 'to-select') { if (!isGuest()) setScreen('select'); }
+  else if (act === 'to-title') { if (confirmLeave()) setScreen('title'); }
   else if (act === 'to-howto') setScreen('howto');
+  else if (act === 'to-online') { setScreen('online'); onlineStatus(''); }
+  else if (act === 'host') hostRoom();
+  else if (act === 'join') joinRoom($('#join-code').value);
+  else if (act === 'leave') confirmLeave();
+  else if (act === 'share') shareRoom();
   else if (act === 'start') startBattle();
-  else if (act === 'resume') togglePause();
+  else if (act === 'resume') { if (isGuest()) setScreen('battle'); else togglePause(); }
 });
 
 window.addEventListener('keydown', (e) => {
   unlockAudio();
   if (e.repeat) return;
+  if (e.target.closest && e.target.closest('input')) {
+    if (e.code === 'Enter' && e.target.id === 'join-code') joinRoom(e.target.value);
+    return;
+  }
   if (e.code === 'Escape' || e.code === 'KeyP') {
     if (screen === 'battle' || screen === 'pause') togglePause();
-    else if (screen === 'select' || screen === 'howto') setScreen('title');
+    else if ((screen === 'select' && !net) || screen === 'howto' || screen === 'online') setScreen('title');
     return;
   }
   if (e.code === 'Enter') {
@@ -312,10 +562,11 @@ window.addEventListener('keydown', (e) => {
     return;
   }
   if (screen === 'select') {
-    if (e.code === 'KeyA') changeChar(0, -1);
-    if (e.code === 'KeyD') changeChar(0, 1);
-    if (e.code === 'ArrowLeft') changeChar(1, -1);
-    if (e.code === 'ArrowRight') changeChar(1, 1);
+    const mine = net ? net.mySlot : 0;
+    if (e.code === 'KeyA') changeChar(mine, -1);
+    if (e.code === 'KeyD') changeChar(mine, 1);
+    if (!net && e.code === 'ArrowLeft') changeChar(1, -1);
+    if (!net && e.code === 'ArrowRight') changeChar(1, 1);
   }
 });
 
@@ -332,8 +583,18 @@ muteBtn.addEventListener('click', (e) => {
 });
 
 document.addEventListener('visibilitychange', () => {
-  if (document.hidden && screen === 'battle') togglePause();
+  if (document.hidden && screen === 'battle' && !isGuest()) togglePause();
 });
+
+async function shareRoom() {
+  if (!net) return;
+  const url = shareUrl(net.code);
+  try {
+    if (navigator.share) { await navigator.share({ title: '大乱闘ブラストファイターズ', text: `部屋コード ${net.code} で対戦しよう！`, url }); return; }
+  } catch { /* キャンセル */ }
+  try { await navigator.clipboard.writeText(url); $('#share-btn').textContent = 'コピーしました'; } catch { prompt('このURLを送ってね', url); }
+  setTimeout(() => { $('#share-btn').textContent = '招待URLを共有'; }, 2000);
+}
 
 // ---------------------------------------------------------------- 起動
 
@@ -342,8 +603,15 @@ if (isTouch) document.body.classList.add('touch');
 initKeyboard();
 const touch = initTouch($('#touch'));
 window.addEventListener('resize', () => renderer.resize());
-setScreen('title');
+const roomParam = normalizeCode(new URLSearchParams(location.search).get('room'));
+if (roomParam.length === 4) {
+  setScreen('online');
+  $('#join-code').value = roomParam;
+  joinRoom(roomParam);
+} else {
+  setScreen('title');
+}
 requestAnimationFrame(frame);
 
 // デバッグ用
-window.__blast = { get game() { return game; }, isKeyDown };
+window.__blast = { get game() { return game; }, get net() { return net; }, get screen() { return screen; }, isKeyDown };
