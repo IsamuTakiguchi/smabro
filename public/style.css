@@ -160,7 +160,7 @@ body[data-screen="select"] #game { filter: saturate(0.8) brightness(0.55) blur(1
   gap: 6px;
   transition: opacity 0.2s, transform 0.2s;
 }
-.slot.off { opacity: 0.45; }
+.slot.off { opacity: 0.7; }
 .slot.off .portrait, .slot.off .char-row, .slot.off .char-info { visibility: hidden; }
 .slot-top { display: flex; width: 100%; justify-content: space-between; align-items: center; gap: 6px; }
 .slot-label { font-weight: 900; font-style: italic; font-size: 22px; color: var(--slot); }
@@ -346,3 +346,17 @@ body.net-guest .stepper button { visibility: hidden; }
 .slot.mine { box-shadow: 0 0 0 3px var(--slot), 0 0 24px var(--slot); }
 .type-btn:disabled { opacity: 1; cursor: default; }
 .char-row button:disabled { visibility: hidden; }
+
+.slot.off { cursor: pointer; }
+.join-hint {
+  position: absolute;
+  inset: 50% 0 auto;
+  transform: translateY(-50%);
+  text-align: center;
+  font-weight: 900;
+  font-size: 16px;
+  color: #fff;
+  opacity: 0.9;
+  pointer-events: none;
+}
+.join-hint::before { content: "＋"; display: block; font-size: 40px; line-height: 1; margin-bottom: 4px; color: var(--slot); }

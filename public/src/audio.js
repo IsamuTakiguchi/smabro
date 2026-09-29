@@ -3,6 +3,11 @@ let ctx = null;
 let master = null;
 let noiseBuf = null;
 export let muted = false;
+const unlockHooks = [];
+
+// BGM・歓声（music.js）から共通の出力先を使うための入口
+export function getAudio() { return ctx ? { ctx, master, noiseBuf } : null; }
+export function onAudioUnlock(fn) { if (ctx) fn(); else unlockHooks.push(fn); }
 
 export function unlockAudio() {
   if (!ctx) {
@@ -15,8 +20,14 @@ export function unlockAudio() {
     noiseBuf = ctx.createBuffer(1, ctx.sampleRate, ctx.sampleRate);
     const d = noiseBuf.getChannelData(0);
     for (let i = 0; i < d.length; i++) d[i] = Math.random() * 2 - 1;
+    for (const fn of unlockHooks.splice(0)) fn();
   }
   if (ctx.state === 'suspended') ctx.resume();
+}
+
+export function suspendAudio(hidden) {
+  if (!ctx) return;
+  if (hidden) ctx.suspend(); else ctx.resume();
 }
 
 export function setMuted(m) {
