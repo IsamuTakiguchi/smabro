@@ -73,6 +73,9 @@ for (const c of CHARACTERS) {
 }
 
 export const FLICK_WINDOW = 5; // スティックをはじいてから何フレーム以内の攻撃を「必殺技」とみなすか
+// 攻撃ボタンをスティックより少し早く押してしまっても必殺技になるよう、
+// スティックを倒さずに押した攻撃はこのフレーム数だけ様子を見てから出す（その間にはじけば必殺技）
+export const ATTACK_BUFFER = 6;
 
 // ---------------------------------------------------------------- 技データ
 
@@ -301,7 +304,7 @@ export class Fighter {
     this.respawnTimer = 0; this.timer = 0; this.lastHitter = null; this.lastHitFrame = -9999;
     this.hitRegistry = new Map();
     this.noGravity = false; this.flash = 0;
-    this.flickAge = 99; this.flickDir = null; this.flickX = 0;
+    this.flickAge = 99; this.flickDir = null; this.flickX = 0; this.pendingAttack = null;
     this.grabbed = null; this.grabbedBy = null; this.escape = 0;
   }
 
@@ -352,6 +355,7 @@ export class Fighter {
   }
 
   startMove(g, id) {
+    this.pendingAttack = null;
     const mv = this.moves[id];
     this.move = mv; this.moveFrame = 0; this.moveData = {};
     this.attackId++;
@@ -360,34 +364,50 @@ export class Fighter {
     g.emit('swing', { f: this, move: id });
   }
 
+  startSpecial(g, sdir, sx) {
+    this.pendingAttack = null;
+    if (sdir === 'up' && this.upBUsed && !this.grounded) return false;
+    if (sdir === 'side' && sx !== 0) this.facing = sx;
+    const id = sdir === 'up' ? 'uspecial' : sdir === 'down' ? 'dspecial' : 'nspecial';
+    this.startMove(g, id);
+    return true;
+  }
+
   tryAttack(g) {
     const dir = this.dirOf();
+    // 先に押された攻撃の様子見中：はじけば必殺技、時間切れなら通常攻撃
+    if (this.pendingAttack !== null && g.frame - this.pendingAttack > ATTACK_BUFFER + 2) this.pendingAttack = null; // 古い入力は捨てる
+    if (this.pendingAttack !== null) {
+      if (this.flickAge === 0 && this.flickDir) return this.startSpecial(g, this.flickDir, this.flickX);
+      if (g.frame - this.pendingAttack >= ATTACK_BUFFER) { this.pendingAttack = null; return this.normalAttack(g, 'neutral'); }
+      if (!this.pressed.attack && !this.pressed.special) return false;
+      this.pendingAttack = null;
+    }
     // 必殺技：必殺ボタン、またはスティックをはじくと同時に攻撃
     const flick = this.pressed.attack && this.flickAge <= FLICK_WINDOW && this.flickDir;
-    if (this.pressed.special || flick) {
-      const sdir = this.pressed.special ? dir : this.flickDir;
-      const sx = this.pressed.special ? sign(this.input.x) : this.flickX;
-      if (sdir === 'up' && this.upBUsed && !this.grounded) return false;
-      if (sdir === 'side' && sx !== 0) this.facing = sx;
-      const id = sdir === 'up' ? 'uspecial' : sdir === 'down' ? 'dspecial' : 'nspecial';
-      this.startMove(g, id);
-      return true;
-    }
+    if (this.pressed.special) return this.startSpecial(g, dir, sign(this.input.x));
+    if (flick) return this.startSpecial(g, this.flickDir, this.flickX);
     if (this.pressed.attack) {
-      let id;
-      if (this.grounded) {
-        if (dir === 'side') this.facing = sign(this.input.x);
-        // 相手の近くでスティックを倒さずに攻撃 → つかみ
-        if (dir === 'neutral' && this.grabTarget(g)) { this.startMove(g, 'grab'); return true; }
-        id = dir === 'up' ? 'up' : dir === 'down' ? 'down' : dir === 'side' ? 'side' : 'jab';
-      } else if (dir === 'up') id = 'uair';
-      else if (dir === 'down') id = 'dair';
-      else if (dir === 'side') id = sign(this.input.x) === this.facing ? 'fair' : 'bair';
-      else id = 'nair';
-      this.startMove(g, id);
-      return true;
+      // スティックを倒さずに押した → 少しだけ待つ（CPU はそのまま出す）
+      if (dir === 'neutral' && !(this.controller && this.controller.level)) { this.pendingAttack = g.frame; return false; }
+      return this.normalAttack(g, dir);
     }
     return false;
+  }
+
+  normalAttack(g, dir) {
+    let id;
+    if (this.grounded) {
+      if (dir === 'side') this.facing = sign(this.input.x);
+      // 相手の近くでスティックを倒さずに攻撃 → つかみ
+      if (dir === 'neutral' && this.grabTarget(g)) { this.startMove(g, 'grab'); return true; }
+      id = dir === 'up' ? 'up' : dir === 'down' ? 'down' : dir === 'side' ? 'side' : 'jab';
+    } else if (dir === 'up') id = 'uair';
+    else if (dir === 'down') id = 'dair';
+    else if (dir === 'side') id = sign(this.input.x) === this.facing ? 'fair' : 'bair';
+    else id = 'nair';
+    this.startMove(g, id);
+    return true;
   }
 
   // つかめる距離に相手がいるか
@@ -975,6 +995,7 @@ export class Game {
 
     // つかみ中・つかまれ中に攻撃を受けたら解除
     this.clearGrab(d);
+    d.pendingAttack = null;
 
     // ダメージとふっとばし
     const dmg = box.dmg;

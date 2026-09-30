@@ -40,6 +40,25 @@ test('スティックをはじくと同時に攻撃 → 必殺技、倒したま
   assert.equal(up.a.move?.id, 'uspecial');
 });
 
+test('攻撃ボタンをスティックより少し早く押しても必殺技になる', () => {
+  // 攻撃 → 2フレーム後に右へはじく
+  const t1 = setup([{}, { attack: true }, {}, { x: 1 }], { dx: 400 });
+  for (let i = 0; i < 5; i++) t1.g.step();
+  assert.equal(t1.a.move?.id, 'nspecial');
+  // 攻撃 → 4フレーム後に上へはじく（復帰技）
+  const t2 = setup([{}, { attack: true }, {}, {}, {}, { y: -1 }], { dx: 400 });
+  for (let i = 0; i < 7; i++) t2.g.step();
+  assert.equal(t2.a.move?.id, 'uspecial');
+  // 攻撃だけ（はじかない）→ 少し待ってからパンチ
+  const t3 = setup([{}, { attack: true }], { dx: 400 });
+  for (let i = 0; i < 12; i++) t3.g.step();
+  assert.equal(t3.a.move?.id, 'jab');
+  // はじくのが遅すぎたら（10フレーム後）必殺技にならない
+  const t4 = setup([{}, { attack: true }, ...Array(9).fill({}), { x: 1 }], { dx: 400 });
+  for (let i = 0; i < 13; i++) t4.g.step();
+  assert.notEqual(t4.a.move?.id, 'nspecial');
+});
+
 test('相手の近くで攻撃 → つかみ、もう一度攻撃 → 投げ（ガード中の相手もつかめる）', () => {
   const frames = [{}, { attack: true }];
   for (let i = 0; i < 20; i++) frames.push({});
@@ -57,7 +76,7 @@ test('相手の近くで攻撃 → つかみ、もう一度攻撃 → 投げ（�
 
 test('遠くで攻撃するとつかまずにパンチ', () => {
   const { g, a } = setup([{}, { attack: true }], { dx: 400 });
-  g.step(); g.step();
+  for (let i = 0; i < 10; i++) g.step();
   assert.equal(a.move?.id, 'jab');
 });
 
