@@ -6,16 +6,83 @@ export const KB_SCALE = 0.15; // ふっとばし値 → 初速
 export const KB_DECAY = 0.3; // ふっとばし速度の毎フレーム減衰量
 export const SHIELD_MAX = 50;
 
-export const STAGE = {
-  main: { left: -420, right: 420, top: 0, bottom: 170 },
-  platforms: [
-    { left: -300, right: -120, y: -150 },
-    { left: 120, right: 300, y: -150 },
-    { left: -90, right: 90, y: -290 },
-  ],
-  blast: { left: -1150, right: 1150, top: -950, bottom: 780 },
-  spawns: [-300, 300, -110, 110],
-};
+// ---------------------------------------------------------------- ステージ
+// move: { amp, speed } を持つ足場は左右に動く（位置はフレーム数から決まるのでオンラインでも一致する）
+
+export const STAGES = [
+  {
+    id: 'sky', name: '夜空の浮島', desc: '足場3つのスタンダードなステージ',
+    main: { left: -420, right: 420, top: 0, bottom: 170 },
+    platforms: [
+      { left: -300, right: -120, y: -150 },
+      { left: 120, right: 300, y: -150 },
+      { left: -90, right: 90, y: -290 },
+    ],
+    blast: { left: -1150, right: 1150, top: -950, bottom: 780 },
+    spawns: [-300, 300, -110, 110],
+  },
+  {
+    id: 'final', name: '星の終着点', desc: '足場なしの平らな決戦場。実力勝負！',
+    main: { left: -470, right: 470, top: 0, bottom: 150 },
+    platforms: [],
+    blast: { left: -1180, right: 1180, top: -930, bottom: 760 },
+    spawns: [-320, 320, -120, 120],
+  },
+  {
+    id: 'forest', name: '大樹の森', desc: '小さめの土台と高さちがいの枝',
+    main: { left: -360, right: 360, top: 0, bottom: 190 },
+    platforms: [
+      { left: -330, right: -170, y: -120 },
+      { left: 170, right: 330, y: -120 },
+      { left: -110, right: 110, y: -250 },
+      { left: -40, right: 150, y: -380 },
+    ],
+    blast: { left: -1100, right: 1100, top: -1000, bottom: 780 },
+    spawns: [-260, 260, -90, 90],
+  },
+  {
+    id: 'volcano', name: 'マグマ峡谷', desc: '真ん中の足場が左右に動く',
+    main: { left: -400, right: 400, top: 0, bottom: 170 },
+    platforms: [
+      { left: -340, right: -200, y: -140 },
+      { left: 200, right: 340, y: -140 },
+      { left: -80, right: 80, y: -250, move: { amp: 170, speed: 0.012 } },
+    ],
+    blast: { left: -1150, right: 1150, top: -950, bottom: 760 },
+    spawns: [-280, 280, -100, 100],
+  },
+];
+
+// 現在のステージ。各所から参照されるので中身を入れかえて使う
+export const STAGE = { id: '', name: '', main: null, platforms: [], blast: null, spawns: [] };
+
+export function setStage(id) {
+  const def = STAGES.find((st) => st.id === id) || STAGES[0];
+  if (STAGE.id === def.id) return;
+  STAGE.id = def.id;
+  STAGE.name = def.name;
+  STAGE.main = def.main;
+  STAGE.blast = def.blast;
+  STAGE.spawns = def.spawns;
+  // 足場オブジェクトはステージごとに使い回す（キャラが乗っている足場の参照を保つため）
+  if (!platformCache.has(def.id)) platformCache.set(def.id, def.platforms.map((p) => ({ ...p, baseLeft: p.left, baseRight: p.right, dx: 0 })));
+  STAGE.platforms = platformCache.get(def.id);
+}
+const platformCache = new Map();
+
+// 動く足場の位置をフレーム数に合わせる
+export function updatePlatforms(frame) {
+  for (const p of STAGE.platforms) {
+    if (!p.move) continue;
+    const off = Math.sin(frame * p.move.speed) * p.move.amp;
+    const prevLeft = p.left;
+    p.left = p.baseLeft + off;
+    p.right = p.baseRight + off;
+    p.dx = p.left - prevLeft;
+  }
+}
+
+setStage('sky');
 
 // ---------------------------------------------------------------- キャラクター
 
@@ -850,7 +917,10 @@ export class Fighter {
 // ---------------------------------------------------------------- ゲーム
 
 export class Game {
-  constructor({ players, stocks = 3, seed = Date.now() }) {
+  constructor({ players, stocks = 3, seed = Date.now(), stage = 'sky' }) {
+    setStage(stage);
+    this.stageId = STAGE.id;
+    updatePlatforms(0);
     this.frame = 0;
     this.events = [];
     this.projectiles = [];
@@ -894,9 +964,19 @@ export class Game {
     });
   }
 
+  // このゲームのステージを有効にする（デモ画面と対戦で別ステージを使うため）
+  useStage() {
+    setStage(this.stageId);
+    updatePlatforms(this.frame);
+  }
+
   step() {
+    this.useStage();
     if (this.over) { this.frame++; return; }
     this.frame++;
+    updatePlatforms(this.frame);
+    // 動く足場に乗っているキャラを一緒に運ぶ
+    for (const f of this.fighters) if (f.grounded && f.platform && f.platform.move && STAGE.platforms.includes(f.platform)) f.x += f.platform.dx;
     for (const f of this.fighters) f.readInput(this);
     for (const f of this.fighters) f.update(this);
     this.updateProjectiles();

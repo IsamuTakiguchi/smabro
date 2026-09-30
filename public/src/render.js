@@ -1,7 +1,30 @@
 // Canvas 描画
-import { STAGE, SHIELD_MAX } from './engine.js';
+import { STAGE, SHIELD_MAX, setStage, updatePlatforms } from './engine.js';
 
 export const SLOT_COLORS = ['#ff4d5e', '#4d8dff', '#ffc933', '#3ddc84'];
+
+// ステージごとの見た目
+const THEMES = {
+  sky: {
+    sky: ['#0d0b2e', '#3b1f6b', '#c2527a', '#f39c6b'], stars: 1, orb: 'moon', orbColor: 'rgba(255,240,220,0.9)', orbGlow: 'rgba(255,240,220,0.15)',
+    hills: ['rgba(60,30,90,0.75)', 'rgba(35,18,60,0.9)'], clouds: 'rgba(255,200,220,0.12)',
+    body: ['#5b4a7a', '#3a2c55', '#1b1330'], top: ['#8fe3b0', '#4cb87a'], plat: ['rgba(127,240,255,0.18)', '#c9f6ff'], deco: 'crystal',
+  },
+  final: {
+    sky: ['#02010a', '#0b0830', '#1d1452', '#2b1a66'], stars: 1.2, orb: 'planet',
+    body: ['#3a4a7a', '#1f2850', '#0b1030'], top: ['#b8f4ff', '#4fb6d8'], plat: ['rgba(127,240,255,0.2)', '#c9f6ff'], deco: 'tech', shape: 'block',
+  },
+  forest: {
+    sky: ['#5db8f5', '#9fd8ff', '#d8f1ff', '#fff3cf'], stars: 0, orb: 'sun', orbColor: 'rgba(255,250,210,0.95)', orbGlow: 'rgba(255,240,170,0.25)',
+    hills: ['rgba(90,160,110,0.7)', 'rgba(50,120,70,0.85)'], hillAmp: 0.1, clouds: 'rgba(255,255,255,0.65)',
+    body: ['#8a5a35', '#6b4423', '#3e2512'], top: ['#7ed957', '#4ea83a'], plat: ['#6b4423', '#9be07a'], deco: 'roots',
+  },
+  volcano: {
+    sky: ['#1a0505', '#4a0d0d', '#a3260e', '#ff7a1a'], stars: 0, orb: 'none',
+    hills: ['rgba(60,15,10,0.85)', 'rgba(30,8,6,0.95)'], hillAmp: 0.12, embers: true,
+    body: ['#4a3530', '#2e201d', '#140c0a'], top: ['#9a7a6a', '#5a4038'], plat: ['#3a2a28', '#8a6a5a'], deco: 'lava',
+  },
+};
 
 export class Renderer {
   constructor(canvas) {
@@ -168,6 +191,7 @@ export class Renderer {
   // ------------------------------------------------------------ 描画
   draw(game, opts = {}) {
     this.ensureSize();
+    if (game.stageId) { setStage(game.stageId); updatePlatforms(game.frame); }
     const ctx = this.ctx;
     this.time++;
     ctx.setTransform(1, 0, 0, 1, 0, 0);
@@ -194,32 +218,48 @@ export class Renderer {
     if (opts.banner) this.drawBanner(opts.banner, opts.bannerT ?? 1);
   }
 
+  theme() { return THEMES[STAGE.id] || THEMES.sky; }
+
   drawBackground() {
-    const ctx = this.ctx, W = this.W, H = this.H;
+    const ctx = this.ctx, W = this.W, H = this.H, T = this.theme();
     const g = ctx.createLinearGradient(0, 0, 0, H);
-    g.addColorStop(0, '#0d0b2e');
-    g.addColorStop(0.45, '#3b1f6b');
-    g.addColorStop(0.8, '#c2527a');
-    g.addColorStop(1, '#f39c6b');
+    T.sky.forEach((c, i) => g.addColorStop(i / (T.sky.length - 1), c));
     ctx.fillStyle = g;
     ctx.fillRect(0, 0, W, H);
     // 星
-    const px = -this.cam.x * 0.02;
-    for (const st of this.stars) {
-      const a = 0.4 + 0.6 * Math.abs(Math.sin(this.time * 0.02 + st.t));
-      ctx.fillStyle = `rgba(255,255,255,${a})`;
-      const x = (((st.x * W + px * this.dpr) % W) + W) % W;
-      ctx.fillRect(x, st.y * H * 0.8, st.s * this.dpr, st.s * this.dpr);
+    if (T.stars) {
+      const px = -this.cam.x * 0.02;
+      for (const st of this.stars) {
+        const a = (0.4 + 0.6 * Math.abs(Math.sin(this.time * 0.02 + st.t))) * T.stars;
+        ctx.fillStyle = `rgba(255,255,255,${a})`;
+        const x = (((st.x * W + px * this.dpr) % W) + W) % W;
+        ctx.fillRect(x, st.y * H * 0.8, st.s * this.dpr, st.s * this.dpr);
+      }
     }
-    // 月
-    ctx.fillStyle = 'rgba(255,240,220,0.9)';
-    ctx.beginPath();
-    ctx.arc(W * 0.8 - this.cam.x * 0.03 * this.dpr, H * 0.2, H * 0.07, 0, Math.PI * 2);
-    ctx.fill();
-    ctx.fillStyle = 'rgba(255,240,220,0.15)';
-    ctx.beginPath();
-    ctx.arc(W * 0.8 - this.cam.x * 0.03 * this.dpr, H * 0.2, H * 0.11, 0, Math.PI * 2);
-    ctx.fill();
+    // 月・太陽・惑星
+    const ox = W * 0.8 - this.cam.x * 0.03 * this.dpr, oy = H * 0.2, r = H * 0.07;
+    if (T.orb === 'moon' || T.orb === 'sun') {
+      ctx.fillStyle = T.orbColor;
+      ctx.beginPath(); ctx.arc(ox, oy, r, 0, Math.PI * 2); ctx.fill();
+      ctx.fillStyle = T.orbGlow;
+      ctx.beginPath(); ctx.arc(ox, oy, r * (T.orb === 'sun' ? 1.9 : 1.6), 0, Math.PI * 2); ctx.fill();
+    } else if (T.orb === 'planet') {
+      const pg = ctx.createRadialGradient(ox - r * 0.4, oy - r * 0.4, r * 0.2, ox, oy, r * 1.6);
+      pg.addColorStop(0, '#ffb3e6'); pg.addColorStop(0.6, '#7a3fb8'); pg.addColorStop(1, '#2a1150');
+      ctx.fillStyle = pg;
+      ctx.beginPath(); ctx.arc(ox, oy, r * 1.6, 0, Math.PI * 2); ctx.fill();
+      ctx.strokeStyle = 'rgba(255,220,255,0.55)';
+      ctx.lineWidth = r * 0.18;
+      ctx.beginPath(); ctx.ellipse(ox, oy, r * 2.8, r * 0.7, -0.35, 0, Math.PI * 2); ctx.stroke();
+      // 銀河の帯
+      ctx.save();
+      ctx.globalAlpha = 0.18;
+      const gg = ctx.createLinearGradient(0, H * 0.7, W, H * 0.1);
+      gg.addColorStop(0, 'rgba(120,80,255,0)'); gg.addColorStop(0.5, '#b58cff'); gg.addColorStop(1, 'rgba(120,80,255,0)');
+      ctx.fillStyle = gg;
+      ctx.beginPath(); ctx.ellipse(W * 0.45, H * 0.4, W * 0.6, H * 0.1, -0.4, 0, Math.PI * 2); ctx.fill();
+      ctx.restore();
+    }
     // 遠景の山
     const layer = (par, base, amp, col, seed) => {
       ctx.fillStyle = col;
@@ -234,72 +274,158 @@ export class Renderer {
       ctx.lineTo(W, H);
       ctx.fill();
     };
-    layer(0.05, 0.78, 0.08, 'rgba(60,30,90,0.75)', 1);
-    layer(0.1, 0.86, 0.07, 'rgba(35,18,60,0.9)', 4);
+    if (T.hills) {
+      layer(0.05, 0.78, T.hillAmp || 0.08, T.hills[0], 1);
+      layer(0.1, 0.86, (T.hillAmp || 0.08) * 0.9, T.hills[1], 4);
+    }
+    // 火山の光と火の粉
+    if (T.embers) {
+      const lg = ctx.createLinearGradient(0, H * 0.7, 0, H);
+      lg.addColorStop(0, 'rgba(255,90,20,0)'); lg.addColorStop(1, 'rgba(255,120,30,0.45)');
+      ctx.fillStyle = lg;
+      ctx.fillRect(0, H * 0.7, W, H * 0.3);
+      for (const st of this.stars) {
+        const yy = (((st.y * H - this.time * (0.6 + st.s) * this.dpr) % H) + H) % H;
+        const xx = (st.x * W + Math.sin(this.time * 0.02 + st.t) * 20 * this.dpr) % W;
+        ctx.fillStyle = `rgba(255,${140 + Math.floor(st.t * 15)},60,${0.3 + 0.5 * (yy / H)})`;
+        ctx.fillRect(xx, yy, 2.5 * this.dpr, 2.5 * this.dpr);
+      }
+    }
     // 雲
-    for (const c of this.clouds) {
-      c.x += 0.00008;
-      if (c.x > 1.2) c.x = -0.2;
-      const x = c.x * W, y = c.y * H, r = H * 0.05 * c.s;
-      ctx.fillStyle = 'rgba(255,200,220,0.12)';
-      ctx.beginPath();
-      ctx.ellipse(x, y, r * 3, r, 0, 0, Math.PI * 2);
-      ctx.ellipse(x + r * 1.5, y - r * 0.4, r * 1.8, r * 0.9, 0, 0, Math.PI * 2);
-      ctx.fill();
+    if (T.clouds) {
+      for (const c of this.clouds) {
+        c.x += 0.00008;
+        if (c.x > 1.2) c.x = -0.2;
+        const x = c.x * W, y = c.y * H, cr = H * 0.05 * c.s;
+        ctx.fillStyle = T.clouds;
+        ctx.beginPath();
+        ctx.ellipse(x, y, cr * 3, cr, 0, 0, Math.PI * 2);
+        ctx.ellipse(x + cr * 1.5, y - cr * 0.4, cr * 1.8, cr * 0.9, 0, 0, Math.PI * 2);
+        ctx.fill();
+      }
     }
   }
 
   drawStage() {
-    const ctx = this.ctx, S = STAGE.main;
-    // 浮島本体
-    ctx.save();
-    const grad = ctx.createLinearGradient(0, S.top, 0, S.bottom + 160);
-    grad.addColorStop(0, '#5b4a7a');
-    grad.addColorStop(0.4, '#3a2c55');
-    grad.addColorStop(1, '#1b1330');
-    ctx.fillStyle = grad;
-    ctx.beginPath();
-    ctx.moveTo(S.left, S.top);
-    ctx.lineTo(S.right, S.top);
-    ctx.lineTo(S.right, S.top + 40);
-    ctx.quadraticCurveTo(S.right - 30, S.bottom, S.right - 150, S.bottom + 60);
-    ctx.quadraticCurveTo(0, S.bottom + 230, -S.right + 150, S.bottom + 60);
-    ctx.quadraticCurveTo(S.left + 30, S.bottom, S.left, S.top + 40);
-    ctx.closePath();
-    ctx.fill();
-    // 岩の模様
-    ctx.strokeStyle = 'rgba(255,255,255,0.06)';
-    ctx.lineWidth = 3;
-    for (let i = 0; i < 6; i++) {
-      ctx.beginPath();
-      ctx.moveTo(-300 + i * 110, 40 + (i % 3) * 25);
-      ctx.lineTo(-260 + i * 110, 90 + (i % 2) * 40);
-      ctx.stroke();
-    }
-    // 光るクリスタル
+    const ctx = this.ctx, S = STAGE.main, T = this.theme();
     const t = this.time * 0.05;
-    for (const [x, y, s] of [[-200, 150, 1], [60, 210, 1.3], [230, 130, 0.8]]) {
-      ctx.fillStyle = `rgba(127,240,255,${0.35 + 0.2 * Math.sin(t + x)})`;
+    ctx.save();
+    // マグマの海（見た目だけ）
+    if (T.deco === 'lava') {
+      const ly = S.bottom + 330;
+      const lg = ctx.createLinearGradient(0, ly, 0, ly + 400);
+      lg.addColorStop(0, '#ffcf4a'); lg.addColorStop(0.15, '#ff6a1a'); lg.addColorStop(1, '#5a0a00');
+      ctx.fillStyle = lg;
       ctx.beginPath();
-      ctx.moveTo(x, y - 30 * s); ctx.lineTo(x + 12 * s, y); ctx.lineTo(x, y + 30 * s); ctx.lineTo(x - 12 * s, y);
+      ctx.moveTo(-2000, ly + 400);
+      for (let x = -2000; x <= 2000; x += 40) ctx.lineTo(x, ly + Math.sin(x * 0.01 + t * 1.5) * 10);
+      ctx.lineTo(2000, ly + 400);
       ctx.fill();
     }
+    // 土台
+    const grad = ctx.createLinearGradient(0, S.top, 0, S.bottom + 160);
+    T.body.forEach((c, i) => grad.addColorStop(i / (T.body.length - 1), c));
+    ctx.fillStyle = grad;
+    ctx.beginPath();
+    if (T.shape === 'block') {
+      ctx.moveTo(S.left, S.top);
+      ctx.lineTo(S.right, S.top);
+      ctx.lineTo(S.right - 40, S.bottom);
+      ctx.lineTo(S.right * 0.3, S.bottom + 120);
+      ctx.lineTo(S.left * 0.3, S.bottom + 120);
+      ctx.lineTo(S.left + 40, S.bottom);
+    } else {
+      ctx.moveTo(S.left, S.top);
+      ctx.lineTo(S.right, S.top);
+      ctx.lineTo(S.right, S.top + 40);
+      ctx.quadraticCurveTo(S.right - 30, S.bottom, S.right - 150, S.bottom + 60);
+      ctx.quadraticCurveTo(0, S.bottom + 230, -S.right + 150, S.bottom + 60);
+      ctx.quadraticCurveTo(S.left + 30, S.bottom, S.left, S.top + 40);
+    }
+    ctx.closePath();
+    ctx.fill();
+    // 模様
+    if (T.deco === 'crystal') {
+      ctx.strokeStyle = 'rgba(255,255,255,0.06)';
+      ctx.lineWidth = 3;
+      for (let i = 0; i < 6; i++) {
+        ctx.beginPath(); ctx.moveTo(-300 + i * 110, 40 + (i % 3) * 25); ctx.lineTo(-260 + i * 110, 90 + (i % 2) * 40); ctx.stroke();
+      }
+      for (const [x, y, sc] of [[-200, 150, 1], [60, 210, 1.3], [230, 130, 0.8]]) {
+        ctx.fillStyle = `rgba(127,240,255,${0.35 + 0.2 * Math.sin(t + x)})`;
+        ctx.beginPath();
+        ctx.moveTo(x, y - 30 * sc); ctx.lineTo(x + 12 * sc, y); ctx.lineTo(x, y + 30 * sc); ctx.lineTo(x - 12 * sc, y);
+        ctx.fill();
+      }
+    } else if (T.deco === 'tech') {
+      ctx.strokeStyle = `rgba(127,240,255,${0.35 + 0.15 * Math.sin(t)})`;
+      ctx.lineWidth = 3;
+      for (let i = -3; i <= 3; i++) {
+        ctx.beginPath(); ctx.moveTo(i * 120, 20); ctx.lineTo(i * 120 * 0.7, S.bottom + 60); ctx.stroke();
+      }
+      ctx.fillStyle = `rgba(127,240,255,${0.5 + 0.3 * Math.sin(t * 2)})`;
+      ctx.beginPath(); ctx.arc(0, S.bottom + 40, 22, 0, Math.PI * 2); ctx.fill();
+    } else if (T.deco === 'roots') {
+      ctx.strokeStyle = 'rgba(60,35,15,0.6)';
+      ctx.lineWidth = 10;
+      for (const [x, d] of [[-250, -1], [-80, 1], [120, -1], [270, 1]]) {
+        ctx.beginPath(); ctx.moveTo(x, 30); ctx.quadraticCurveTo(x + d * 60, 120, x + d * 30, S.bottom + 80); ctx.stroke();
+      }
+      ctx.fillStyle = 'rgba(255,240,150,0.6)';
+      for (let i = 0; i < 6; i++) {
+        const fx = -300 + i * 120 + Math.sin(t + i) * 20, fy = -60 - i * 40 + Math.cos(t * 0.7 + i) * 25;
+        ctx.globalAlpha = 0.4 + 0.4 * Math.sin(t * 2 + i);
+        ctx.beginPath(); ctx.arc(fx, fy, 4, 0, Math.PI * 2); ctx.fill();
+      }
+      ctx.globalAlpha = 1;
+    } else if (T.deco === 'lava') {
+      ctx.strokeStyle = `rgba(255,${110 + Math.floor(40 * Math.sin(t))},30,0.8)`;
+      ctx.lineWidth = 4;
+      for (const pts of [[[-300, 30], [-250, 70], [-270, 130]], [[-60, 20], [-20, 90], [30, 120], [10, 180]], [[220, 40], [260, 100], [240, 150]]]) {
+        ctx.beginPath(); ctx.moveTo(pts[0][0], pts[0][1]);
+        for (const [x, y] of pts.slice(1)) ctx.lineTo(x, y);
+        ctx.stroke();
+      }
+    }
     // 上面
-    ctx.fillStyle = '#8fe3b0';
+    ctx.fillStyle = T.top[0];
     ctx.fillRect(S.left, S.top, S.right - S.left, 10);
-    ctx.fillStyle = '#4cb87a';
+    ctx.fillStyle = T.top[1];
     ctx.fillRect(S.left, S.top + 10, S.right - S.left, 8);
     ctx.fillStyle = 'rgba(255,255,255,0.35)';
     ctx.fillRect(S.left, S.top, S.right - S.left, 2);
+    if (T.deco === 'roots') {
+      ctx.fillStyle = T.top[0];
+      for (let x = S.left; x < S.right; x += 18) { ctx.beginPath(); ctx.moveTo(x, S.top + 10); ctx.lineTo(x + 9, S.top + 22); ctx.lineTo(x + 18, S.top + 10); ctx.fill(); }
+    }
     // すり抜け床
     for (const p of STAGE.platforms) {
-      ctx.fillStyle = 'rgba(127,240,255,0.18)';
-      ctx.fillRect(p.left, p.y, p.right - p.left, 16);
-      ctx.fillStyle = '#c9f6ff';
-      ctx.fillRect(p.left, p.y, p.right - p.left, 5);
-      ctx.fillStyle = 'rgba(127,240,255,0.5)';
-      ctx.fillRect(p.left + 10, p.y + 16, 6, 6);
-      ctx.fillRect(p.right - 16, p.y + 16, 6, 6);
+      const pw = p.right - p.left;
+      if (T.deco === 'roots') {
+        ctx.fillStyle = '#6b4423';
+        ctx.fillRect(p.left, p.y, pw, 14);
+        ctx.fillStyle = 'rgba(80,180,90,0.9)';
+        for (let x = p.left - 10; x < p.right + 10; x += 26) { ctx.beginPath(); ctx.arc(x + 13, p.y - 4, 14, Math.PI, 0); ctx.fill(); }
+        ctx.fillStyle = '#9be07a';
+        ctx.fillRect(p.left, p.y, pw, 4);
+      } else if (T.deco === 'lava') {
+        ctx.fillStyle = '#3a2a28';
+        ctx.fillRect(p.left, p.y, pw, 18);
+        ctx.fillStyle = p.move ? '#ffb347' : '#8a6a5a';
+        ctx.fillRect(p.left, p.y, pw, 5);
+        if (p.move) {
+          ctx.fillStyle = `rgba(255,140,40,${0.5 + 0.3 * Math.sin(t * 3)})`;
+          ctx.beginPath(); ctx.moveTo(p.left + pw * 0.3, p.y + 18); ctx.lineTo(p.left + pw * 0.5, p.y + 40 + Math.sin(t * 5) * 6); ctx.lineTo(p.left + pw * 0.7, p.y + 18); ctx.fill();
+        }
+      } else {
+        ctx.fillStyle = T.plat[0];
+        ctx.fillRect(p.left, p.y, pw, 16);
+        ctx.fillStyle = T.plat[1];
+        ctx.fillRect(p.left, p.y, pw, 5);
+        ctx.fillStyle = T.plat[0];
+        ctx.fillRect(p.left + 10, p.y + 16, 6, 6);
+        ctx.fillRect(p.right - 16, p.y + 16, 6, 6);
+      }
     }
     ctx.restore();
   }

@@ -94,6 +94,16 @@
       </div>
     </header>
     <div id="slots" class="slots"></div>
+    <div id="stage-pick" class="stage-pick">
+      <button class="stage-arrow" data-stage="-1" aria-label="前のステージ">◀</button>
+      <div class="stage-thumb"><canvas id="stage-preview"></canvas><span class="stage-q">？</span></div>
+      <div class="stage-info">
+        <div class="stage-label">ステージ</div>
+        <div id="stage-name" class="stage-name"></div>
+        <div id="stage-desc" class="stage-desc"></div>
+      </div>
+      <button class="stage-arrow" data-stage="1" aria-label="次のステージ">▶</button>
+    </div>
     <footer class="select-foot">
       <button class="btn primary big host-only" data-action="start">たたかう！</button>
       <p class="waiting guest-only">ホストが対戦を始めるのを待っています…</p>
