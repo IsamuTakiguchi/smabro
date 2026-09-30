@@ -1,10 +1,32 @@
 // Canvas 描画
-import { STAGE, SHIELD_MAX, setStage, updatePlatforms } from './engine.js';
+import { STAGE, SHIELD_MAX, setStage, updatePlatforms, hazardState, STADIUM_FORMS } from './engine.js';
 
 export const SLOT_COLORS = ['#ff4d5e', '#4d8dff', '#ffc933', '#3ddc84'];
 
 // ステージごとの見た目
 const THEMES = {
+  stadium: {
+    sky: ['#0a1030', '#1b2a5c', '#3a4a8a', '#5a6ab0'], stars: 0.6, orb: 'none', crowd: true,
+    body: ['#6a7488', '#4a5264', '#252a36'], top: ['#b8e986', '#7cb342'], plat: ['rgba(255,255,255,0.18)', '#e8f0ff'], deco: 'stadium', shape: 'block',
+  },
+  stadium_ice: {
+    sky: ['#0b2238', '#1f4d73', '#6aa8d8', '#cfe9ff'], stars: 0, orb: 'none', crowd: true, snow: true,
+    body: ['#9fc7e8', '#6f9fc8', '#3a6a96'], top: ['#f4fbff', '#bfe3ff'], plat: ['rgba(200,240,255,0.4)', '#ffffff'], deco: 'stadium', shape: 'block',
+  },
+  stadium_moon: {
+    sky: ['#000005', '#050520', '#101035', '#1a1a45'], stars: 1.3, orb: 'earth', crowd: false,
+    body: ['#9a9aa8', '#6a6a78', '#3a3a48'], top: ['#d8d8e0', '#a8a8b8'], plat: ['rgba(255,255,255,0.15)', '#e0e0ea'], deco: 'crater', shape: 'block',
+  },
+  highway: {
+    sky: ['#2a1a4a', '#7a3a6a', '#e0705a', '#ffc070'], stars: 0.3, orb: 'sun', orbColor: 'rgba(255,200,120,0.95)', orbGlow: 'rgba(255,160,90,0.25)',
+    hills: ['rgba(90,50,90,0.7)', 'rgba(50,30,60,0.9)'], hillAmp: 0.14, clouds: 'rgba(255,190,160,0.25)', cityLights: true,
+    body: ['#3a3a44', '#26262e', '#141418'], top: ['#55555f', '#3a3a44'], plat: ['#2e6b3a', '#e8f5e9'], deco: 'road', shape: 'road',
+  },
+  airship: {
+    sky: ['#3a8ad8', '#6ab4f0', '#aee0ff', '#e8f7ff'], stars: 0, orb: 'sun', orbColor: 'rgba(255,255,230,0.95)', orbGlow: 'rgba(255,250,200,0.3)',
+    clouds: 'rgba(255,255,255,0.8)', cloudSpeed: 0.0012, seaOfClouds: true,
+    body: ['#a0683a', '#7a4a24', '#4a2a10'], top: ['#d8a86a', '#b0804a'], plat: ['#8a5a2a', '#e0b070'], deco: 'ship', shape: 'ship',
+  },
   sky: {
     sky: ['#0d0b2e', '#3b1f6b', '#c2527a', '#f39c6b'], stars: 1, orb: 'moon', orbColor: 'rgba(255,240,220,0.9)', orbGlow: 'rgba(255,240,220,0.15)',
     hills: ['rgba(60,30,90,0.75)', 'rgba(35,18,60,0.9)'], clouds: 'rgba(255,200,220,0.12)',
@@ -128,6 +150,16 @@ export class Renderer {
           sfx.grab();
           break;
         case 'ledge': sfx.land(); break;
+        case 'hazardWarn': sfx.warn(); break;
+        case 'hazard':
+          if (e.kind === 'lava') { sfx.roar(); this.shake = Math.max(this.shake, 14); }
+          else if (e.kind === 'car') sfx.horn();
+          else if (e.kind === 'wind') sfx.wind();
+          break;
+        case 'stageForm':
+          this.flash = 14; this.shake = Math.max(this.shake, 8);
+          sfx.transform();
+          break;
       }
     }
   }
@@ -192,6 +224,7 @@ export class Renderer {
   draw(game, opts = {}) {
     this.ensureSize();
     if (game.stageId) { setStage(game.stageId); updatePlatforms(game.frame); }
+    this.gameFrame = game.frame || 0;
     const ctx = this.ctx;
     this.time++;
     ctx.setTransform(1, 0, 0, 1, 0, 0);
@@ -203,6 +236,7 @@ export class Renderer {
     ctx.setTransform(s, 0, 0, s, this.W / 2 - this.cam.x * s + sx, this.H / 2 - this.cam.y * s + sy);
 
     this.drawStage();
+    this.drawHazards();
     for (const p of game.projectiles) this.drawProjectile(p);
     const order = [...game.fighters].sort((a, b) => (a.state === 'attack') - (b.state === 'attack'));
     for (const f of order) if (f.alive) this.drawFighter(f, game);
@@ -210,6 +244,7 @@ export class Renderer {
 
     ctx.setTransform(1, 0, 0, 1, 0, 0);
     this.drawOffscreen(game);
+    this.drawHazardOverlay();
     if (this.flash > 0) {
       ctx.fillStyle = `rgba(255,255,255,${this.flash / 20})`;
       ctx.fillRect(0, 0, this.W, this.H);
@@ -218,7 +253,10 @@ export class Renderer {
     if (opts.banner) this.drawBanner(opts.banner, opts.bannerT ?? 1);
   }
 
-  theme() { return THEMES[STAGE.id] || THEMES.sky; }
+  theme() {
+    if (STAGE.id === 'stadium') return STAGE.form === 2 ? THEMES.stadium_ice : STAGE.form === 3 ? THEMES.stadium_moon : THEMES.stadium;
+    return THEMES[STAGE.id] || THEMES.sky;
+  }
 
   drawBackground() {
     const ctx = this.ctx, W = this.W, H = this.H, T = this.theme();
@@ -243,6 +281,13 @@ export class Renderer {
       ctx.beginPath(); ctx.arc(ox, oy, r, 0, Math.PI * 2); ctx.fill();
       ctx.fillStyle = T.orbGlow;
       ctx.beginPath(); ctx.arc(ox, oy, r * (T.orb === 'sun' ? 1.9 : 1.6), 0, Math.PI * 2); ctx.fill();
+    } else if (T.orb === 'earth') {
+      const eg = ctx.createRadialGradient(ox - r * 0.5, oy - r * 0.5, r * 0.3, ox, oy, r * 1.8);
+      eg.addColorStop(0, '#9fe0ff'); eg.addColorStop(0.5, '#2f7fd0'); eg.addColorStop(1, '#0a2a60');
+      ctx.fillStyle = eg;
+      ctx.beginPath(); ctx.arc(ox, oy, r * 1.8, 0, Math.PI * 2); ctx.fill();
+      ctx.fillStyle = 'rgba(90,190,110,0.8)';
+      ctx.beginPath(); ctx.ellipse(ox - r * 0.4, oy - r * 0.2, r * 0.6, r * 0.35, 0.5, 0, Math.PI * 2); ctx.ellipse(ox + r * 0.6, oy + r * 0.5, r * 0.5, r * 0.3, -0.3, 0, Math.PI * 2); ctx.fill();
     } else if (T.orb === 'planet') {
       const pg = ctx.createRadialGradient(ox - r * 0.4, oy - r * 0.4, r * 0.2, ox, oy, r * 1.6);
       pg.addColorStop(0, '#ffb3e6'); pg.addColorStop(0.6, '#7a3fb8'); pg.addColorStop(1, '#2a1150');
@@ -274,6 +319,45 @@ export class Renderer {
       ctx.lineTo(W, H);
       ctx.fill();
     };
+    if (T.cityLights) {
+      for (let i = 0; i < 70; i++) {
+        const lx = ((i * 97.3 + 13) % 100) / 100 * W - this.cam.x * 0.04 * this.dpr;
+        const ly = H * (0.74 + ((i * 37) % 10) / 100);
+        ctx.fillStyle = `rgba(255,${200 + (i % 3) * 20},120,${0.4 + 0.4 * Math.abs(Math.sin(this.time * 0.03 + i))})`;
+        ctx.fillRect(((lx % W) + W) % W, ly, 2.5 * this.dpr, 2.5 * this.dpr);
+      }
+    }
+    if (T.crowd) {
+      // スタジアムの観客席と大型ビジョン
+      ctx.fillStyle = 'rgba(10,14,30,0.9)';
+      ctx.beginPath();
+      ctx.moveTo(0, H * 0.62);
+      ctx.quadraticCurveTo(W / 2, H * 0.48, W, H * 0.62);
+      ctx.lineTo(W, H); ctx.lineTo(0, H);
+      ctx.fill();
+      for (let i = 0; i < 160; i++) {
+        const cx = (i / 160) * W;
+        const cy = H * (0.6 - 0.1 * Math.sin((i / 160) * Math.PI)) + (i % 4) * H * 0.018 + Math.sin(this.time * 0.15 + i) * 1.5 * this.dpr;
+        ctx.fillStyle = ['#e57373', '#64b5f6', '#ffd54f', '#81c784', '#ba68c8'][i % 5];
+        ctx.globalAlpha = 0.55;
+        ctx.beginPath(); ctx.arc(cx, cy, 3.2 * this.dpr, 0, Math.PI * 2); ctx.fill();
+      }
+      ctx.globalAlpha = 1;
+      const bw = W * 0.2, bh = H * 0.12, bx = W / 2 - bw / 2, by = H * 0.08;
+      ctx.fillStyle = '#111'; ctx.fillRect(bx - 6, by - 6, bw + 12, bh + 12);
+      ctx.fillStyle = '#1d3b6a'; ctx.fillRect(bx, by, bw, bh);
+      ctx.fillStyle = '#fff';
+      ctx.font = `900 ${Math.round(bh * 0.42)}px system-ui, sans-serif`;
+      ctx.textAlign = 'center'; ctx.textBaseline = 'middle';
+      ctx.fillText(STADIUM_FORMS[STAGE.form] || '', W / 2, by + bh / 2);
+      for (const lx of [0.08, 0.92]) {
+        ctx.fillStyle = 'rgba(255,255,220,0.9)';
+        ctx.beginPath(); ctx.arc(W * lx, H * 0.1, 10 * this.dpr, 0, Math.PI * 2); ctx.fill();
+        const bg = ctx.createRadialGradient(W * lx, H * 0.1, 0, W * lx, H * 0.1, H * 0.25);
+        bg.addColorStop(0, 'rgba(255,255,220,0.25)'); bg.addColorStop(1, 'rgba(255,255,220,0)');
+        ctx.fillStyle = bg; ctx.fillRect(W * lx - H * 0.25, 0, H * 0.5, H * 0.35);
+      }
+    }
     if (T.hills) {
       layer(0.05, 0.78, T.hillAmp || 0.08, T.hills[0], 1);
       layer(0.1, 0.86, (T.hillAmp || 0.08) * 0.9, T.hills[1], 4);
@@ -294,7 +378,7 @@ export class Renderer {
     // 雲
     if (T.clouds) {
       for (const c of this.clouds) {
-        c.x += 0.00008;
+        c.x += T.cloudSpeed || 0.00008;
         if (c.x > 1.2) c.x = -0.2;
         const x = c.x * W, y = c.y * H, cr = H * 0.05 * c.s;
         ctx.fillStyle = T.clouds;
@@ -302,6 +386,24 @@ export class Renderer {
         ctx.ellipse(x, y, cr * 3, cr, 0, 0, Math.PI * 2);
         ctx.ellipse(x + cr * 1.5, y - cr * 0.4, cr * 1.8, cr * 0.9, 0, 0, Math.PI * 2);
         ctx.fill();
+      }
+    }
+    // 雲海（飛空艇）
+    if (T.seaOfClouds) {
+      const off = (this.time * 3 * this.dpr) % (H * 0.3);
+      ctx.fillStyle = 'rgba(255,255,255,0.9)';
+      for (let x = -H * 0.3; x < W + H * 0.3; x += H * 0.15) {
+        ctx.beginPath(); ctx.arc(x - off, H * 0.95, H * 0.12, 0, Math.PI * 2); ctx.fill();
+      }
+      ctx.fillStyle = 'rgba(230,240,255,0.95)';
+      ctx.fillRect(0, H * 0.95, W, H * 0.05);
+    }
+    if (T.snow) {
+      ctx.fillStyle = 'rgba(255,255,255,0.8)';
+      for (const st of this.stars) {
+        const yy = (((st.y * H + this.time * (0.8 + st.s) * this.dpr) % H) + H) % H;
+        const xx = (((st.x * W + Math.sin(this.time * 0.02 + st.t) * 15 * this.dpr) % W) + W) % W;
+        ctx.beginPath(); ctx.arc(xx, yy, (1 + st.s) * this.dpr, 0, Math.PI * 2); ctx.fill();
       }
     }
   }
@@ -327,7 +429,15 @@ export class Renderer {
     T.body.forEach((c, i) => grad.addColorStop(i / (T.body.length - 1), c));
     ctx.fillStyle = grad;
     ctx.beginPath();
-    if (T.shape === 'block') {
+    if (T.shape === 'road') {
+      ctx.moveTo(-2200, S.top); ctx.lineTo(2200, S.top); ctx.lineTo(2200, S.bottom + 400); ctx.lineTo(-2200, S.bottom + 400);
+    } else if (T.shape === 'ship') {
+      ctx.moveTo(S.left - 60, S.top - 20);
+      ctx.lineTo(S.right + 90, S.top - 30);
+      ctx.quadraticCurveTo(S.right + 20, S.bottom + 20, S.right - 120, S.bottom + 60);
+      ctx.lineTo(S.left + 100, S.bottom + 60);
+      ctx.quadraticCurveTo(S.left - 20, S.bottom, S.left - 60, S.top - 20);
+    } else if (T.shape === 'block') {
       ctx.moveTo(S.left, S.top);
       ctx.lineTo(S.right, S.top);
       ctx.lineTo(S.right - 40, S.bottom);
@@ -378,6 +488,47 @@ export class Renderer {
         ctx.beginPath(); ctx.arc(fx, fy, 4, 0, Math.PI * 2); ctx.fill();
       }
       ctx.globalAlpha = 1;
+    } else if (T.deco === 'road') {
+      ctx.fillStyle = '#ffffff';
+      for (let x = -2200; x < 2200; x += 160) ctx.fillRect(x, S.top + 45, 80, 8);
+      ctx.fillStyle = '#ffd24d';
+      ctx.fillRect(-2200, S.top + 22, 4400, 4);
+      ctx.fillStyle = '#8a8a96';
+      for (let x = -2200; x < 2200; x += 120) ctx.fillRect(x, S.top - 34, 8, 34);
+      ctx.fillStyle = '#c8c8d4';
+      ctx.fillRect(-2200, S.top - 36, 4400, 8);
+    } else if (T.deco === 'ship') {
+      ctx.strokeStyle = 'rgba(60,30,10,0.5)';
+      ctx.lineWidth = 3;
+      for (let y = S.top + 30; y < S.bottom + 50; y += 26) { ctx.beginPath(); ctx.moveTo(S.left, y); ctx.lineTo(S.right, y); ctx.stroke(); }
+      ctx.fillStyle = '#ffe9a8';
+      for (const x of [-250, -120, 10, 140, 270]) { ctx.beginPath(); ctx.arc(x, S.top + 70, 11, 0, Math.PI * 2); ctx.fill(); }
+      // プロペラ
+      for (const [px, py] of [[S.left - 40, S.bottom + 10], [S.right + 40, S.bottom + 10]]) {
+        ctx.fillStyle = '#555';
+        ctx.fillRect(px - 8, py - 30, 16, 40);
+        ctx.fillStyle = 'rgba(220,220,230,0.7)';
+        const a = this.time * 0.8;
+        ctx.beginPath(); ctx.ellipse(px, py + 20, 70 * Math.abs(Math.cos(a)), 10, 0, 0, Math.PI * 2); ctx.fill();
+      }
+      // マストと帆
+      ctx.fillStyle = '#6b4423';
+      ctx.fillRect(-8, -330, 16, 330);
+      ctx.fillStyle = 'rgba(255,250,235,0.92)';
+      ctx.beginPath(); ctx.moveTo(10, -310); ctx.quadraticCurveTo(110 + Math.sin(t) * 8, -210, 10, -60); ctx.fill();
+      ctx.beginPath(); ctx.moveTo(-10, -300); ctx.quadraticCurveTo(-90 + Math.sin(t) * 6, -210, -10, -90); ctx.fill();
+      ctx.fillStyle = '#e84a4a';
+      ctx.beginPath(); ctx.moveTo(8, -440); ctx.lineTo(60 + Math.sin(t * 3) * 6, -425); ctx.lineTo(8, -410); ctx.fill();
+      ctx.fillStyle = '#6b4423';
+      ctx.fillRect(-4, -440, 8, 110);
+    } else if (T.deco === 'stadium') {
+      ctx.fillStyle = 'rgba(255,255,255,0.1)';
+      for (let i = -3; i <= 3; i++) ctx.fillRect(i * 110 - 30, 30, 60, S.bottom - 20);
+      ctx.fillStyle = `rgba(255,210,77,${0.5 + 0.3 * Math.sin(t * 2)})`;
+      ctx.fillRect(S.left, S.top + 18, S.right - S.left, 4);
+    } else if (T.deco === 'crater') {
+      ctx.fillStyle = 'rgba(0,0,0,0.18)';
+      for (const [x, y, r] of [[-250, 60, 30], [-40, 100, 45], [200, 70, 25], [300, 130, 20], [-300, 140, 18]]) { ctx.beginPath(); ctx.ellipse(x, y, r, r * 0.5, 0, 0, Math.PI * 2); ctx.fill(); }
     } else if (T.deco === 'lava') {
       ctx.strokeStyle = `rgba(255,${110 + Math.floor(40 * Math.sin(t))},30,0.8)`;
       ctx.lineWidth = 4;
@@ -399,9 +550,42 @@ export class Renderer {
       for (let x = S.left; x < S.right; x += 18) { ctx.beginPath(); ctx.moveTo(x, S.top + 10); ctx.lineTo(x + 9, S.top + 22); ctx.lineTo(x + 18, S.top + 10); ctx.fill(); }
     }
     // すり抜け床
+    const hz = hazardState(STAGE.id, this.gameFrame || 0);
     for (const p of STAGE.platforms) {
       const pw = p.right - p.left;
-      if (T.deco === 'roots') {
+      if (p.active === false) {
+        // 変形の予告：次に出る足場を点線で見せる
+        if (hz.kind === 'forms' && hz.phase === 'warn' && p.forms.includes(hz.next) && Math.floor(this.time / 8) % 2) {
+          ctx.setLineDash([10, 8]);
+          ctx.strokeStyle = 'rgba(255,255,255,0.8)';
+          ctx.lineWidth = 3;
+          ctx.strokeRect(p.left, p.y, pw, 14);
+          ctx.setLineDash([]);
+        }
+        continue;
+      }
+      if (hz.kind === 'forms' && hz.phase === 'warn' && !p.forms.includes(hz.next)) ctx.globalAlpha = 0.5 + 0.5 * Math.abs(Math.sin(this.time * 0.25));
+      if (T.deco === 'ship') {
+        ctx.fillStyle = '#6b4423';
+        ctx.fillRect(p.left, p.y, pw, 12);
+        ctx.fillStyle = '#e0b070';
+        ctx.fillRect(p.left, p.y, pw, 4);
+        ctx.strokeStyle = 'rgba(80,50,20,0.8)';
+        ctx.lineWidth = 2;
+        ctx.beginPath(); ctx.moveTo(p.left + 8, p.y + 12); ctx.lineTo(p.left + 8, p.y + 60); ctx.moveTo(p.right - 8, p.y + 12); ctx.lineTo(p.right - 8, p.y + 60); ctx.stroke();
+      } else if (T.deco === 'road') {
+        ctx.fillStyle = '#777';
+        ctx.fillRect(p.left + 20, p.y + 40, 10, -p.y - 40);
+        ctx.fillRect(p.right - 30, p.y + 40, 10, -p.y - 40);
+        ctx.fillStyle = '#2e6b3a';
+        ctx.fillRect(p.left, p.y, pw, 44);
+        ctx.strokeStyle = '#e8f5e9'; ctx.lineWidth = 3;
+        ctx.strokeRect(p.left + 4, p.y + 4, pw - 8, 36);
+        ctx.fillStyle = '#e8f5e9';
+        ctx.font = '900 22px system-ui, sans-serif';
+        ctx.textAlign = 'center'; ctx.textBaseline = 'middle';
+        ctx.fillText('← 峠 BLAST →', (p.left + p.right) / 2, p.y + 23);
+      } else if (T.deco === 'roots') {
         ctx.fillStyle = '#6b4423';
         ctx.fillRect(p.left, p.y, pw, 14);
         ctx.fillStyle = 'rgba(80,180,90,0.9)';
@@ -426,6 +610,135 @@ export class Renderer {
         ctx.fillRect(p.left + 10, p.y + 16, 6, 6);
         ctx.fillRect(p.right - 16, p.y + 16, 6, 6);
       }
+      ctx.globalAlpha = 1;
+    }
+    ctx.restore();
+  }
+
+  // ステージギミック（ワールド座標）
+  drawHazards() {
+    const ctx = this.ctx, S = STAGE.main;
+    const h = hazardState(STAGE.id, this.gameFrame || 0);
+    if (h.phase === 'idle') return;
+    const t = this.time;
+    ctx.save();
+    if (h.kind === 'lava') {
+      if (h.phase === 'warn') {
+        // ぶくぶく泡立つ予告
+        const k = (h.t - 690) / 90;
+        ctx.fillStyle = `rgba(255,120,30,${0.3 + 0.4 * k})`;
+        ctx.beginPath(); ctx.ellipse(h.x, S.top + 4, 70, 14, 0, 0, Math.PI * 2); ctx.fill();
+        for (let i = 0; i < 6; i++) {
+          const bx = h.x + Math.sin(i * 2.1 + t * 0.2) * 50;
+          const by = S.top - ((t * 2 + i * 17) % (30 + k * 80));
+          ctx.fillStyle = 'rgba(255,200,80,0.8)';
+          ctx.beginPath(); ctx.arc(bx, by, 5 + k * 4, 0, Math.PI * 2); ctx.fill();
+        }
+      } else {
+        const top = S.top - 540 * Math.min(1, h.progress * 4);
+        const fade = h.progress > 0.8 ? (1 - h.progress) / 0.2 : 1;
+        ctx.globalAlpha = fade;
+        const g = ctx.createLinearGradient(h.x - 65, 0, h.x + 65, 0);
+        g.addColorStop(0, '#ff4a0a'); g.addColorStop(0.5, '#ffd24a'); g.addColorStop(1, '#ff4a0a');
+        ctx.fillStyle = g;
+        ctx.beginPath();
+        ctx.moveTo(h.x - 65, S.top + 10);
+        for (let y = S.top; y > top; y -= 30) ctx.lineTo(h.x - 65 + Math.sin(y * 0.05 + t * 0.4) * 10, y);
+        ctx.quadraticCurveTo(h.x, top - 50, h.x + 65, top);
+        for (let y = top; y < S.top; y += 30) ctx.lineTo(h.x + 65 + Math.sin(y * 0.05 + t * 0.4 + 2) * 10, y);
+        ctx.lineTo(h.x + 65, S.top + 10);
+        ctx.fill();
+      }
+    } else if (h.kind === 'wind') {
+      const k = h.phase === 'warn' ? 0.3 : 1;
+      ctx.strokeStyle = `rgba(255,255,255,${0.35 * k})`;
+      ctx.lineWidth = 3;
+      for (let i = 0; i < 26; i++) {
+        const y = -600 + ((i * 53) % 640);
+        const len = 80 + (i % 4) * 40;
+        const x = ((((i * 211 + t * 22 * h.dir) % 2400) + 2400) % 2400) - 1200;
+        ctx.beginPath(); ctx.moveTo(x, y); ctx.lineTo(x - h.dir * len, y); ctx.stroke();
+      }
+      ctx.fillStyle = `rgba(110,190,90,${0.8 * k})`;
+      for (let i = 0; i < 14; i++) {
+        const x = ((((i * 173 + t * 16 * h.dir) % 2400) + 2400) % 2400) - 1200;
+        const y = -520 + ((i * 71) % 520) + Math.sin(t * 0.1 + i) * 20;
+        ctx.save(); ctx.translate(x, y); ctx.rotate(t * 0.2 + i);
+        ctx.beginPath(); ctx.ellipse(0, 0, 9, 4, 0, 0, Math.PI * 2); ctx.fill();
+        ctx.restore();
+      }
+    } else if (h.kind === 'car' && h.phase === 'active') {
+      ctx.translate(h.x, S.top);
+      ctx.scale(h.dir, 1);
+      // スピード線
+      ctx.strokeStyle = 'rgba(255,255,255,0.5)';
+      ctx.lineWidth = 3;
+      for (let i = 0; i < 5; i++) { ctx.beginPath(); ctx.moveTo(-130 - i * 20, -15 - i * 14); ctx.lineTo(-260 - i * 30, -15 - i * 14); ctx.stroke(); }
+      // トラック
+      ctx.fillStyle = '#d83a3a';
+      ctx.fillRect(-110, -80, 150, 62);
+      ctx.fillStyle = '#f2f2f2';
+      ctx.fillRect(-104, -74, 138, 40);
+      ctx.fillStyle = '#d83a3a';
+      ctx.font = '900 20px system-ui, sans-serif'; ctx.textAlign = 'center'; ctx.textBaseline = 'middle';
+      ctx.save(); ctx.scale(h.dir, 1); ctx.fillText('BLAST便', -35 * h.dir, -54); ctx.restore();
+      ctx.fillStyle = '#2a5ad8';
+      ctx.beginPath(); ctx.moveTo(40, -18); ctx.lineTo(40, -70); ctx.lineTo(85, -70); ctx.lineTo(110, -40); ctx.lineTo(110, -18); ctx.fill();
+      ctx.fillStyle = '#bfe6ff';
+      ctx.fillRect(50, -64, 30, 22);
+      ctx.fillStyle = '#fff6a0';
+      ctx.beginPath(); ctx.arc(106, -28, 6, 0, Math.PI * 2); ctx.fill();
+      ctx.fillStyle = '#222';
+      for (const wx of [-80, 0, 80]) { ctx.beginPath(); ctx.arc(wx, -14, 16, 0, Math.PI * 2); ctx.fill(); }
+      ctx.fillStyle = '#999';
+      for (const wx of [-80, 0, 80]) { ctx.beginPath(); ctx.arc(wx, -14, 6, 0, Math.PI * 2); ctx.fill(); }
+    }
+    ctx.restore();
+  }
+
+  // ギミックの予告表示（画面座標）
+  drawHazardOverlay() {
+    const h = hazardState(STAGE.id, this.gameFrame || 0);
+    if (h.phase === 'idle') return;
+    const ctx = this.ctx, d = this.dpr;
+    const blink = Math.floor(this.time / 8) % 2;
+    ctx.save();
+    ctx.textAlign = 'center'; ctx.textBaseline = 'middle';
+    if (h.kind === 'car' && h.phase === 'warn') {
+      // 車が来る側に「！」
+      const x = h.dir > 0 ? 60 * d : this.W - 60 * d, y = this.H * 0.55;
+      if (blink) {
+        ctx.fillStyle = '#ffd24d';
+        ctx.beginPath(); ctx.moveTo(x, y - 40 * d); ctx.lineTo(x + 40 * d, y + 30 * d); ctx.lineTo(x - 40 * d, y + 30 * d); ctx.closePath(); ctx.fill();
+        ctx.fillStyle = '#111';
+        ctx.font = `900 ${Math.round(44 * d)}px system-ui, sans-serif`;
+        ctx.fillText('!', x, y + 6 * d);
+      }
+      ctx.font = `900 ${Math.round(18 * d)}px system-ui, sans-serif`;
+      ctx.fillStyle = '#fff';
+      ctx.strokeStyle = '#000'; ctx.lineWidth = 4 * d;
+      ctx.strokeText(h.dir > 0 ? '車が来る！ →' : '← 車が来る！', this.W / 2, 70 * d);
+      ctx.fillText(h.dir > 0 ? '車が来る！ →' : '← 車が来る！', this.W / 2, 70 * d);
+    } else if (h.kind === 'forms' && h.phase === 'warn') {
+      const text = `ステージ変化！ → ${STADIUM_FORMS[h.next]}`;
+      ctx.font = `900 ${Math.round(28 * d)}px system-ui, sans-serif`;
+      ctx.strokeStyle = '#000'; ctx.lineWidth = 6 * d;
+      ctx.strokeText(text, this.W / 2, this.H * 0.27);
+      ctx.fillStyle = blink ? '#ffd24d' : '#fff';
+      ctx.fillText(text, this.W / 2, this.H * 0.27);
+    } else if (h.kind === 'wind' && h.phase === 'warn') {
+      ctx.font = `900 ${Math.round(22 * d)}px system-ui, sans-serif`;
+      ctx.strokeStyle = '#000'; ctx.lineWidth = 5 * d;
+      const text = h.dir > 0 ? '強風注意！ →→' : '←← 強風注意！';
+      ctx.strokeText(text, this.W / 2, 80 * d);
+      ctx.fillStyle = '#e8ffe0';
+      ctx.fillText(text, this.W / 2, 80 * d);
+    } else if (h.kind === 'lava' && h.phase === 'warn') {
+      ctx.font = `900 ${Math.round(22 * d)}px system-ui, sans-serif`;
+      ctx.strokeStyle = '#000'; ctx.lineWidth = 5 * d;
+      ctx.strokeText('溶岩が噴き出す！', this.W / 2, 80 * d);
+      ctx.fillStyle = blink ? '#ffb347' : '#fff';
+      ctx.fillText('溶岩が噴き出す！', this.W / 2, 80 * d);
     }
     ctx.restore();
   }

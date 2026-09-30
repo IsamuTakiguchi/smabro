@@ -29,7 +29,7 @@ export const STAGES = [
     spawns: [-320, 320, -120, 120],
   },
   {
-    id: 'forest', name: '大樹の森', desc: '小さめの土台と高さちがいの枝',
+    id: 'forest', name: '大樹の森', desc: 'ときどき強風が吹いてふきとばされる！',
     main: { left: -360, right: 360, top: 0, bottom: 190 },
     platforms: [
       { left: -330, right: -170, y: -120 },
@@ -41,7 +41,7 @@ export const STAGES = [
     spawns: [-260, 260, -90, 90],
   },
   {
-    id: 'volcano', name: 'マグマ峡谷', desc: '真ん中の足場が左右に動く',
+    id: 'volcano', name: 'マグマ峡谷', desc: '溶岩の柱が噴き上がる！ 真ん中の足場は左右に動く',
     main: { left: -400, right: 400, top: 0, bottom: 170 },
     platforms: [
       { left: -340, right: -200, y: -140 },
@@ -51,10 +51,86 @@ export const STAGES = [
     blast: { left: -1150, right: 1150, top: -950, bottom: 760 },
     spawns: [-280, 280, -100, 100],
   },
+  {
+    id: 'stadium', name: '変形スタジアム', desc: '25秒ごとに地形が変わる（タワー・氷・月面）',
+    main: { left: -440, right: 440, top: 0, bottom: 170 },
+    platforms: [
+      // forms: その足場が出ている形態（0 通常 / 1 タワー / 2 氷 / 3 月面）
+      { left: -270, right: -110, y: -140, forms: [0] },
+      { left: 110, right: 270, y: -140, forms: [0] },
+      { left: -340, right: -200, y: -110, forms: [1] },
+      { left: 200, right: 340, y: -110, forms: [1] },
+      { left: -90, right: 90, y: -230, forms: [1] },
+      { left: -220, right: -100, y: -360, forms: [1] },
+      { left: 100, right: 220, y: -360, forms: [1] },
+      { left: -210, right: 210, y: -170, forms: [2] },
+      { left: -290, right: -150, y: -190, forms: [3] },
+      { left: 150, right: 290, y: -190, forms: [3] },
+      { left: -70, right: 70, y: -340, forms: [3] },
+    ],
+    blast: { left: -1150, right: 1150, top: -950, bottom: 780 },
+    spawns: [-300, 300, -110, 110],
+  },
+  {
+    id: 'highway', name: '峠の街道', desc: '端がない道路。ときどき車が走ってくる！',
+    main: { left: -1500, right: 1500, top: 0, bottom: 170 },
+    walkoff: true,
+    platforms: [
+      { left: -160, right: 160, y: -170 },
+    ],
+    blast: { left: -1150, right: 1150, top: -950, bottom: 760 },
+    spawns: [-300, 300, -110, 110],
+  },
+  {
+    id: 'airship', name: '飛空艇', desc: '雲の上を進む船。左右の足場が上下に動く',
+    main: { left: -380, right: 380, top: 0, bottom: 150 },
+    platforms: [
+      { left: -310, right: -170, y: -150, move: { axis: 'y', amp: 75, speed: 0.02 } },
+      { left: 170, right: 310, y: -150, move: { axis: 'y', amp: 75, speed: 0.02, phase: Math.PI } },
+      { left: -75, right: 75, y: -330 },
+    ],
+    blast: { left: -1150, right: 1150, top: -950, bottom: 780 },
+    spawns: [-280, 280, -100, 100],
+  },
 ];
 
+// ---------------------------------------------------------------- ステージギミック
+// どれもフレーム数だけから決まる純粋な関数なので、ホストと参加端末で同じ状態になる
+
+const hash = (n) => (((n + 1) * 2654435761) >>> 0) % 1000;
+export const STADIUM_FORMS = ['通常', 'タワー', '氷', '月面'];
+const FORM_LEN = 1500;
+
+export function hazardState(stageId, frame) {
+  if (stageId === 'volcano') {
+    const k = Math.floor(frame / 900), t = frame % 900;
+    const x = [-260, 0, 260][hash(k) % 3];
+    const phase = t >= 690 && t < 780 ? 'warn' : t >= 780 && t < 850 ? 'active' : 'idle';
+    return { kind: 'lava', id: k, t, x, phase, progress: phase === 'active' ? (t - 780) / 70 : 0 };
+  }
+  if (stageId === 'forest') {
+    const k = Math.floor(frame / 1200), t = frame % 1200;
+    const dir = k % 2 ? 1 : -1;
+    const phase = t >= 840 && t < 900 ? 'warn' : t >= 900 && t < 1140 ? 'active' : 'idle';
+    return { kind: 'wind', id: k, t, dir, phase };
+  }
+  if (stageId === 'stadium') {
+    const k = Math.floor(frame / FORM_LEN), t = frame % FORM_LEN;
+    // 通常 → タワー → 氷 → 月面 → 通常 …
+    return { kind: 'forms', id: k, t, form: k % 4, next: (k + 1) % 4, phase: t >= FORM_LEN - 150 ? 'warn' : 'idle' };
+  }
+  if (stageId === 'highway') {
+    const k = Math.floor(frame / 720), t = frame % 720;
+    const dir = hash(k) % 2 ? 1 : -1;
+    const x = dir > 0 ? -1500 + (t - 630) * 30 : 1500 - (t - 630) * 30;
+    const phase = t >= 540 && t < 630 ? 'warn' : t >= 630 && Math.abs(x) <= 1500 ? 'active' : 'idle';
+    return { kind: 'car', id: k, t, dir, x, phase };
+  }
+  return { kind: 'none', phase: 'idle' };
+}
+
 // 現在のステージ。各所から参照されるので中身を入れかえて使う
-export const STAGE = { id: '', name: '', main: null, platforms: [], blast: null, spawns: [] };
+export const STAGE = { id: '', name: '', main: null, platforms: [], blast: null, spawns: [], walkoff: false, friction: 1, gravityMul: 1, form: 0 };
 
 export function setStage(id) {
   const def = STAGES.find((st) => st.id === id) || STAGES[0];
@@ -64,21 +140,37 @@ export function setStage(id) {
   STAGE.main = def.main;
   STAGE.blast = def.blast;
   STAGE.spawns = def.spawns;
+  STAGE.walkoff = !!def.walkoff;
+  STAGE.friction = 1; STAGE.gravityMul = 1; STAGE.form = 0;
   // 足場オブジェクトはステージごとに使い回す（キャラが乗っている足場の参照を保つため）
-  if (!platformCache.has(def.id)) platformCache.set(def.id, def.platforms.map((p) => ({ ...p, baseLeft: p.left, baseRight: p.right, dx: 0 })));
+  if (!platformCache.has(def.id)) platformCache.set(def.id, def.platforms.map((p) => ({ ...p, baseLeft: p.left, baseRight: p.right, baseY: p.y, prevY: p.y, dx: 0, active: true })));
   STAGE.platforms = platformCache.get(def.id);
 }
 const platformCache = new Map();
 
 // 動く足場の位置をフレーム数に合わせる
 export function updatePlatforms(frame) {
+  // 変形スタジアムの形態（氷はすべる、月面は低重力）
+  if (STAGE.id === 'stadium') {
+    const h = hazardState('stadium', frame);
+    STAGE.form = h.form;
+    STAGE.friction = h.form === 2 ? 0.12 : 1;
+    STAGE.gravityMul = h.form === 3 ? 0.55 : 1;
+  }
   for (const p of STAGE.platforms) {
+    if (p.forms) p.active = p.forms.includes(STAGE.form);
     if (!p.move) continue;
-    const off = Math.sin(frame * p.move.speed) * p.move.amp;
-    const prevLeft = p.left;
-    p.left = p.baseLeft + off;
-    p.right = p.baseRight + off;
-    p.dx = p.left - prevLeft;
+    const off = Math.sin(frame * p.move.speed + (p.move.phase || 0)) * p.move.amp;
+    if (p.move.axis === 'y') {
+      p.prevY = p.y;
+      p.y = p.baseY + off;
+      p.dx = 0;
+    } else {
+      const prevLeft = p.left;
+      p.left = p.baseLeft + off;
+      p.right = p.baseRight + off;
+      p.dx = p.left - prevLeft;
+    }
   }
 }
 
@@ -553,10 +645,10 @@ export class Fighter {
         if (pr.down && this.platform) { this.dropThrough(); break; }
         if (Math.abs(inp.x) > 0.3) {
           this.facing = sign(inp.x);
-          this.vx = approach(this.vx, inp.x * c.walk, 1.1);
+          this.vx = approach(this.vx, inp.x * c.walk, 1.1 * STAGE.friction);
           if (this.state !== 'run') this.setState('run');
         } else {
-          this.vx = approach(this.vx, 0, 0.9);
+          this.vx = approach(this.vx, 0, 0.9 * STAGE.friction);
           if (this.state !== 'idle') this.setState('idle');
         }
         break;
@@ -824,7 +916,7 @@ export class Fighter {
 
     const kbSpeed = Math.hypot(this.kbx, this.kby);
     if (!this.grounded && !this.noGravity && !(this.state === 'hitstun' && kbSpeed > 2)) {
-      this.vy += c.gravity;
+      this.vy += c.gravity * STAGE.gravityMul;
       const cap = this.fastFalling ? c.fastFall : c.maxFall;
       if (this.fastFalling) this.vy = Math.max(this.vy, c.fastFall * 0.8);
       if (this.vy > cap) this.vy = cap;
@@ -844,7 +936,7 @@ export class Fighter {
     if (this.grounded) {
       // 足場が残っているかチェック
       const surf = this.platform || S;
-      if (this.x < surf.left || this.x > surf.right) {
+      if (this.x < surf.left || this.x > surf.right || (this.platform && this.platform.active === false)) {
         this.grounded = false; this.platform = null;
         if (this.state === 'idle' || this.state === 'run') this.setState('air');
         if (this.state === 'shield' || this.state === 'shieldstun' || this.state === 'landlag' || this.state === 'roll' || this.state === 'spotdodge') this.setState('air');
@@ -860,7 +952,9 @@ export class Fighter {
         this.y = S.top; this.platform = null; this.land(g);
       } else if (this.dropTimer <= 0 && !(this.input.y > 0.5 && this.state === 'air' && this.fastFalling)) {
         for (const p of STAGE.platforms) {
-          if (this.prevY <= p.y + 0.01 && this.y >= p.y && this.x >= p.left && this.x <= p.right) {
+          if (p.active === false) continue;
+          const py0 = Math.max(p.y, p.prevY ?? p.y); // 上下に動く足場は動く前の位置でも判定
+          if (this.prevY <= py0 + 0.01 && this.y >= p.y && this.x >= p.left && this.x <= p.right) {
             this.y = p.y; this.platform = p; this.land(g); break;
           }
         }
@@ -934,6 +1028,9 @@ export class Game {
     this.winner = null;
     this.rngState = seed >>> 0 || 1;
     this.eliminations = 0;
+    // ステージギミックによる攻撃の「攻撃者」
+    this.hazardSrc = { uid: -1, isHazard: true, char: { name: 'ステージ', color: '#ff6a1a', accent: '#ffd24d' }, stats: { dealt: 0, kos: 0, falls: 0, sds: 0 }, hitlag: 0, x: 0, facing: 1, attackId: 0 };
+    this.hazardHits = new Set();
   }
 
   rand() {
@@ -979,10 +1076,56 @@ export class Game {
     for (const f of this.fighters) if (f.grounded && f.platform && f.platform.move && STAGE.platforms.includes(f.platform)) f.x += f.platform.dx;
     for (const f of this.fighters) f.readInput(this);
     for (const f of this.fighters) f.update(this);
+    this.stageHazards();
     this.updateProjectiles();
     this.resolveHits();
     this.checkBlastZones();
     this.checkGameOver();
+  }
+
+  stageHazards() {
+    const h = hazardState(this.stageId, this.frame);
+    if (h.kind === 'none') return;
+    const S = STAGE.main;
+    // 予告・発生・形態変化のイベント
+    if (h.kind === 'lava') {
+      if (h.t === 690) this.emit('hazardWarn', { kind: 'lava', x: h.x, y: S.top });
+      if (h.t === 780) this.emit('hazard', { kind: 'lava', x: h.x, y: S.top });
+    } else if (h.kind === 'wind') {
+      if (h.t === 840) this.emit('hazardWarn', { kind: 'wind', dir: h.dir });
+      if (h.t === 900) this.emit('hazard', { kind: 'wind', dir: h.dir });
+    } else if (h.kind === 'car') {
+      if (h.t === 540) this.emit('hazardWarn', { kind: 'car', dir: h.dir, x: h.dir > 0 ? -700 : 700, y: S.top });
+      if (h.t === 630) this.emit('hazard', { kind: 'car', dir: h.dir });
+    } else if (h.kind === 'forms') {
+      if (h.t === FORM_LEN - 150) this.emit('hazardWarn', { kind: 'forms', next: h.next });
+      if (h.t === 0 && this.frame > 0) this.emit('stageForm', { form: h.form, name: STADIUM_FORMS[h.form] });
+    }
+    if (h.phase !== 'active') return;
+    for (const f of this.fighters) {
+      if (!f.alive || ['respawn', 'ledge', 'dead'].includes(f.state)) continue;
+      const r = f.hurtRect();
+      if (h.kind === 'wind') {
+        if (f.state !== 'grabbed') f.x += h.dir * (f.grounded ? 1.6 : 2.4);
+      } else if (h.kind === 'lava') {
+        const top = S.top - 540 * Math.min(1, h.progress * 4);
+        if (r.x + r.w > h.x - 65 && r.x < h.x + 65 && r.y < S.top + 5 && r.y + r.h > top) {
+          this.hazardHit(f, `lava${h.id}`, { dmg: 14, ang: 90, bkb: 70, kbg: 70, cx: h.x, cy: f.y - f.h / 2 }, f.x >= h.x ? 1 : -1);
+        }
+      } else if (h.kind === 'car') {
+        if (r.x + r.w > h.x - 110 && r.x < h.x + 110 && r.y + r.h > S.top - 85 && r.y < S.top) {
+          this.hazardHit(f, `car${h.id}`, { dmg: 18, ang: 35, bkb: 75, kbg: 80, cx: h.x, cy: S.top - 45 }, h.dir);
+        }
+      }
+    }
+  }
+
+  // ステージギミックでダメージ（1回の発生につき1人1回まで）
+  hazardHit(f, key, box, facing) {
+    const k = `${key}:${f.uid}`;
+    if (this.hazardHits.has(k) || f.intangible) return;
+    this.hazardHits.add(k);
+    this.applyHit({ a: this.hazardSrc, d: f, box, facing, proj: { life: 1, radial: true, hit: new Set(), x: box.cx, y: box.cy } });
   }
 
   updateProjectiles() {

@@ -73,6 +73,11 @@ export const sfx = {
     noise({ dur: 0.08 + p * 0.25, vol: 0.25 + p * 0.35, freq: 2200 - p * 1500, q: 0.8 });
     tone({ type: 'square', f0: 300 - p * 150, f1: 60, dur: 0.08 + p * 0.2, vol: 0.18 + p * 0.2 });
   },
+  warn() { [0, 0.18, 0.36].forEach((d) => tone({ type: 'square', f0: 880, f1: 880, dur: 0.1, vol: 0.12, delay: d })); },
+  roar() { noise({ dur: 1.4, vol: 0.45, freq: 300, q: 0.6, type: 'lowpass' }); tone({ type: 'sawtooth', f0: 90, f1: 40, dur: 1.2, vol: 0.2 }); },
+  horn() { tone({ type: 'square', f0: 392, f1: 392, dur: 0.35, vol: 0.14 }); tone({ type: 'square', f0: 494, f1: 494, dur: 0.35, vol: 0.12 }); tone({ type: 'square', f0: 392, f1: 392, dur: 0.5, vol: 0.14, delay: 0.45 }); tone({ type: 'square', f0: 494, f1: 494, dur: 0.5, vol: 0.12, delay: 0.45 }); },
+  wind() { noise({ dur: 3.5, vol: 0.25, freq: 700, q: 0.4, type: 'bandpass' }); noise({ dur: 3, vol: 0.12, freq: 2500, q: 1, type: 'bandpass', delay: 0.3 }); },
+  transform() { [523, 659, 784, 1046, 1318].forEach((f, i) => tone({ type: 'triangle', f0: f, f1: f, dur: 0.15, vol: 0.14, delay: i * 0.06 })); noise({ dur: 0.6, vol: 0.2, freq: 3000, q: 0.5, type: 'highpass' }); },
   grab() { noise({ dur: 0.08, vol: 0.2, freq: 900, q: 1.2 }); tone({ type: 'square', f0: 240, f1: 180, dur: 0.07, vol: 0.12 }); },
   swing() { noise({ dur: 0.07, vol: 0.08, freq: 3500, q: 2, type: 'highpass' }); },
   jump() { tone({ type: 'triangle', f0: 280, f1: 560, dur: 0.09, vol: 0.15 }); },
