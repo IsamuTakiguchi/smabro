@@ -62,6 +62,18 @@ export const CHARACTERS = [
   },
 ];
 
+// 滞空時間を本家に近づける：高さはほぼ保ったまま、重力を弱めてふわっと長く飛ぶ
+// （重力×0.55・ジャンプ初速×0.78 → 滞空時間 約1.4倍、高さ 約1.1倍）
+for (const c of CHARACTERS) {
+  c.gravity *= 0.55;
+  c.jump *= 0.78;
+  c.dblJump *= 0.78;
+  c.maxFall *= 0.8;
+  c.fastFall *= 0.85;
+}
+
+export const FLICK_WINDOW = 5; // スティックをはじいてから何フレーム以内の攻撃を「必殺技」とみなすか
+
 // ---------------------------------------------------------------- 技データ
 
 function helpers(c) {
@@ -100,7 +112,7 @@ const SPECIALS = {
       name: '昇炎拳', total: s(46), helplessAfter: true, landLag: 14,
       boxes: [box(4, 8, 22, -60, 32, 7, 80, 40, 40, { group: 1 }), box(9, 20, 10, -90, 32, 5, 85, 45, 70, { group: 2 })],
       tick(f, fr) {
-        if (fr === s(4)) { f.vy = -20; f.vx = f.input.x * 4; f.grounded = false; f.upBUsed = true; }
+        if (fr === s(4)) { f.vy = -15.5; f.vx = f.input.x * 4; f.grounded = false; f.upBUsed = true; }
       },
     };
   },
@@ -125,7 +137,7 @@ const SPECIALS = {
       name: 'ロケットジャンプ', total: s(44), helplessAfter: true, landLag: 16,
       boxes: [box(6, 18, 0, -50, 42, 9, 85, 35, 60)],
       tick(f, fr) {
-        if (fr === s(6)) { f.vy = -19; f.vx = f.input.x * 5; f.grounded = false; f.upBUsed = true; }
+        if (fr === s(6)) { f.vy = -15; f.vx = f.input.x * 5; f.grounded = false; f.upBUsed = true; }
       },
     };
   },
@@ -169,7 +181,7 @@ const SPECIALS = {
           if (Math.hypot(ix, iy) < 0.3) { ix = 0; iy = -1; }
           if (iy > 0.3 && f.grounded) iy = 0;
           const m = Math.hypot(ix, iy);
-          f.vx = (ix / m) * 20; f.vy = (iy / m) * 21;
+          f.vx = (ix / m) * 17; f.vy = (iy / m) * 17;
           if (ix !== 0) f.facing = Math.sign(ix);
           f.grounded = f.grounded && iy >= 0; f.upBUsed = true;
         }
@@ -202,7 +214,7 @@ const SPECIALS = {
       boxes: [box(6, 12, 0, -40, 38, 6, 80, 40, 50)],
       tick(f, fr) {
         if (fr === 1) { f.grounded = false; f.upBUsed = true; }
-        if (fr >= 1 && fr <= s(42)) { f.vy = -9.5; f.vx = f.input.x * 5; f.noGravity = true; }
+        if (fr >= 1 && fr <= s(42)) { f.vy = -8; f.vx = f.input.x * 5; f.noGravity = true; }
       },
     };
   },
@@ -226,6 +238,8 @@ function buildMoves(c) {
     dair: { name: 'メテオ', total: s(38), landLag: 14, boxes: [box(12, 16, 0, 4, 30, 13, 280, 20, 85)] },
     ledgeAttack: { name: 'ガケのぼり攻撃', total: s(30), boxes: [box(8, 12, 40, -30, 36, 8, 40, 30, 60)] },
     counterHit: { name: 'カウンター', total: s(34), boxes: [box(3, 7, 50, -45, 48, 10, 40, 45, 90)] },
+    grab: { name: 'つかみ', total: s(30), boxes: [box(6, 9, 36, -45, 30, 0, 0, 0, 0, { grab: true })] },
+    throw: { name: '投げ', total: s(20), boxes: [] },
   };
   m.nspecial = SPECIALS[c.specials.neutral](c);
   m.uspecial = SPECIALS[c.specials.up](c);
@@ -287,6 +301,8 @@ export class Fighter {
     this.respawnTimer = 0; this.timer = 0; this.lastHitter = null; this.lastHitFrame = -9999;
     this.hitRegistry = new Map();
     this.noGravity = false; this.flash = 0;
+    this.flickAge = 99; this.flickDir = null; this.flickX = 0;
+    this.grabbed = null; this.grabbedBy = null; this.escape = 0;
   }
 
   get alive() { return this.state !== 'dead' && this.state !== 'out'; }
@@ -318,6 +334,13 @@ export class Fighter {
       special: raw.special && !p.special,
       shield: raw.shield && !p.shield,
     };
+    // スティックをはじいた瞬間を記録（はじき＋攻撃 = 必殺技）
+    const pr = this.pressed;
+    if (pr.up || pr.down || pr.left || pr.right) {
+      this.flickAge = 0;
+      this.flickDir = pr.up ? 'up' : pr.down ? 'down' : 'side';
+      this.flickX = pr.left ? -1 : pr.right ? 1 : sign(raw.x);
+    } else if (this.flickAge < 99) this.flickAge++;
   }
 
   dirOf() {
@@ -339,11 +362,14 @@ export class Fighter {
 
   tryAttack(g) {
     const dir = this.dirOf();
-    if (this.pressed.special) {
-      if (dir === 'up') { if (this.upBUsed && !this.grounded) return false; }
-      if (dir === 'side' && this.grounded) this.facing = sign(this.input.x);
-      if (dir === 'side' && !this.grounded && sign(this.input.x) !== 0) this.facing = sign(this.input.x);
-      const id = dir === 'up' ? 'uspecial' : dir === 'down' ? 'dspecial' : 'nspecial';
+    // 必殺技：必殺ボタン、またはスティックをはじくと同時に攻撃
+    const flick = this.pressed.attack && this.flickAge <= FLICK_WINDOW && this.flickDir;
+    if (this.pressed.special || flick) {
+      const sdir = this.pressed.special ? dir : this.flickDir;
+      const sx = this.pressed.special ? sign(this.input.x) : this.flickX;
+      if (sdir === 'up' && this.upBUsed && !this.grounded) return false;
+      if (sdir === 'side' && sx !== 0) this.facing = sx;
+      const id = sdir === 'up' ? 'uspecial' : sdir === 'down' ? 'dspecial' : 'nspecial';
       this.startMove(g, id);
       return true;
     }
@@ -351,6 +377,8 @@ export class Fighter {
       let id;
       if (this.grounded) {
         if (dir === 'side') this.facing = sign(this.input.x);
+        // 相手の近くでスティックを倒さずに攻撃 → つかみ
+        if (dir === 'neutral' && this.grabTarget(g)) { this.startMove(g, 'grab'); return true; }
         id = dir === 'up' ? 'up' : dir === 'down' ? 'down' : dir === 'side' ? 'side' : 'jab';
       } else if (dir === 'up') id = 'uair';
       else if (dir === 'down') id = 'dair';
@@ -360,6 +388,17 @@ export class Fighter {
       return true;
     }
     return false;
+  }
+
+  // つかめる距離に相手がいるか
+  grabTarget(g) {
+    for (const o of g.fighters) {
+      if (o === this || !o.alive || o.intangible || ['respawn', 'ledge', 'grabbed', 'grabbing'].includes(o.state)) continue;
+      const dx = o.x - this.x;
+      if (Math.abs(dx) > this.w / 2 + o.w / 2 + 34 * this.char.reach || Math.abs(o.y - this.y) > 50) continue;
+      if (Math.abs(dx) < 12 || sign(dx) === this.facing) return o;
+    }
+    return null;
   }
 
   land(g) {
@@ -514,6 +553,7 @@ export class Fighter {
         this.vx = approach(this.vx, 0, 1);
         this.shieldHP -= 0.14;
         if (this.shieldHP <= 0) { this.breakShield(g); break; }
+        if (pr.attack) { this.startMove(g, 'grab'); break; } // ガード＋攻撃 = つかみ
         if (jumpPressed && this.stateFrame > 1) { this.setState('jumpsquat'); break; }
         if (pr.left || pr.right) {
           this.setState('roll');
@@ -545,6 +585,33 @@ export class Fighter {
         if (--this.hitstun <= 0) this.setState(this.grounded ? 'idle' : 'air');
         else if (!this.grounded) this.airDrift(0.35);
         break;
+      }
+      case 'grabbing': {
+        const v = this.grabbed;
+        if (!v || v.state !== 'grabbed' || v.grabbedBy !== this) { this.grabbed = null; this.setState('idle'); break; }
+        this.vx = approach(this.vx, 0, 1);
+        if (this.stateFrame > 6) {
+          // もう一度攻撃（またはスティックをはじく）で投げ。向きで投げ方が変わる
+          if (pr.attack || pr.special) { g.throwGrabbed(this, this.dirOf(), sign(inp.x)); break; }
+          if (pr.up) { g.throwGrabbed(this, 'up', 0); break; }
+          if (pr.down) { g.throwGrabbed(this, 'down', 0); break; }
+          if (pr.left || pr.right) { g.throwGrabbed(this, 'side', pr.left ? -1 : 1); break; }
+        }
+        if (this.stateFrame > 160) g.releaseGrab(this);
+        break;
+      }
+      case 'grabbed': {
+        const a = this.grabbedBy;
+        if (!a || a.state !== 'grabbing' || a.grabbed !== this) { this.grabbedBy = null; this.setState(this.grounded ? 'idle' : 'air'); break; }
+        this.x = a.x + a.facing * (a.w / 2 + this.w / 2 + 4);
+        this.y = a.y; this.grounded = a.grounded; this.platform = a.platform;
+        this.vx = this.vy = this.kbx = this.kby = 0;
+        this.facing = -a.facing;
+        // レバガチャ・ボタン連打で早く抜けられる
+        const mash = pr.attack || pr.special || pr.jump || pr.shield || pr.left || pr.right || pr.up || pr.down;
+        this.escape -= mash ? 5 : 1;
+        if (this.escape <= 0) g.releaseGrab(a);
+        return; // 物理演算しない
       }
       case 'dizzy': {
         this.vx = approach(this.vx, 0, 0.5);
@@ -838,6 +905,7 @@ export class Game {
       for (const b of a.activeBoxes()) {
         for (const d of this.fighters) {
           if (d === a || d.intangible || d.state === 'respawn') continue;
+          if (b.grab && ['ledge', 'grabbed', 'grabbing'].includes(d.state)) continue;
           const reg = d.hitRegistry.get(a.uid);
           if (reg && reg.attackId === a.attackId && reg.groups.has(b.group ?? 0)) continue;
           const r = d.hurtRect();
@@ -859,8 +927,15 @@ export class Game {
     for (const h of hits) this.applyHit(h);
   }
 
-  applyHit({ a, d, box, facing, proj }) {
-    if (proj) {
+  applyHit({ a, d, box, facing, proj, thrown }) {
+    if (box.grab) {
+      // つかみはガード・カウンターで防げない。1回の技でつかむのは1人だけ
+      if (a.state === 'attack' && a.move && a.move.id === 'grab' && d.alive) this.startGrab(a, d);
+      return;
+    }
+    if (thrown) {
+      // 投げはガード・カウンター無視
+    } else if (proj) {
       if (proj.life <= 0 && !proj.radial) return;
       if (proj.radial) { proj.hit = proj.hit || new Set(); proj.hit.add(d); } else proj.life = 0;
     } else {
@@ -870,7 +945,7 @@ export class Game {
     }
 
     // カウンター
-    if (d.counterActive()) {
+    if (!thrown && d.counterActive()) {
       const cm = d.moves.counterHit;
       const dmg = Math.max(8, Math.round(box.dmg * 1.3));
       cm.boxes[0].dmg = dmg;
@@ -885,7 +960,7 @@ export class Game {
     }
 
     // シールド
-    if (d.state === 'shield' || d.state === 'shieldstun') {
+    if (!thrown && (d.state === 'shield' || d.state === 'shieldstun')) {
       d.shieldHP -= box.dmg * 1.3;
       const lag = Math.floor(box.dmg * 0.35 + 3);
       d.hitlag = lag;
@@ -897,6 +972,9 @@ export class Game {
       this.emit('shieldhit', { x: d.x, y: d.y - d.h / 2, dmg: box.dmg });
       return;
     }
+
+    // つかみ中・つかまれ中に攻撃を受けたら解除
+    this.clearGrab(d);
 
     // ダメージとふっとばし
     const dmg = box.dmg;
@@ -925,7 +1003,72 @@ export class Game {
     d.hitlag = lag;
     if (!proj) a.hitlag = lag;
     d.lastHitter = a; d.lastHitFrame = this.frame;
-    this.emit('hit', { a, d, x: proj ? proj.x : box.cx, y: proj ? proj.y : box.cy, dmg, kb, dx, dy, strong: kb > 130 });
+    this.emit('hit', { a, d, x: proj ? proj.x : box.cx, y: proj ? proj.y : box.cy, dmg, kb, dx, dy, strong: kb > 130, thrown: !!thrown });
+  }
+
+  // ---------------------------------------------------------------- つかみ・投げ
+
+  startGrab(a, d) {
+    this.clearGrab(d);
+    if (d.ledge) { d.ledge.owner = null; d.ledge = null; }
+    a.move = null; a.vx = 0;
+    a.setState('grabbing');
+    a.grabbed = d;
+    d.move = null;
+    d.setState('grabbed');
+    d.grabbedBy = a;
+    d.vx = d.vy = d.kbx = d.kby = 0;
+    d.hitlag = 0;
+    d.escape = 55 + d.damage * 0.6;
+    this.emit('grab', { a, d, x: d.x, y: d.y - d.h / 2 });
+  }
+
+  // つかんだ手を離す（抜けられた・時間切れ）
+  releaseGrab(a) {
+    const v = a.grabbed;
+    a.grabbed = null;
+    if (v && v.grabbedBy === a) {
+      v.grabbedBy = null;
+      v.setState(v.grounded ? 'idle' : 'air');
+      v.vx = a.facing * 7;
+      v.invuln = Math.max(v.invuln, 10);
+    }
+    if (a.state === 'grabbing') {
+      a.setState('landlag');
+      a.timer = 16;
+      a.vx = -a.facing * 5;
+    }
+  }
+
+  // 攻撃を受けた・撃墜されたときにつかみ関係を解除
+  clearGrab(f) {
+    if (f.state === 'grabbing' || f.grabbed) this.releaseGrab(f);
+    if (f.grabbedBy) {
+      const a = f.grabbedBy;
+      f.grabbedBy = null;
+      if (a.grabbed === f) { a.grabbed = null; if (a.state === 'grabbing') { a.setState('landlag'); a.timer = 10; } }
+    }
+  }
+
+  throwGrabbed(a, dir, sx) {
+    const v = a.grabbed;
+    if (!v) return;
+    const kind = dir === 'up' ? 'up' : dir === 'down' ? 'down' : dir === 'side' && sx === -a.facing ? 'back' : 'forward';
+    const T = {
+      forward: { dmg: 8, ang: 40, bkb: 60, kbg: 62 },
+      back: { dmg: 10, ang: 140, bkb: 62, kbg: 72 },
+      up: { dmg: 7, ang: 88, bkb: 65, kbg: 66 },
+      down: { dmg: 6, ang: 76, bkb: 45, kbg: 40 },
+    }[kind];
+    a.grabbed = null;
+    v.grabbedBy = null;
+    a.startMove(this, 'throw');
+    a.moveData.throwKind = kind;
+    v.setState('idle');
+    if (kind === 'back') v.x = a.x - a.facing * (a.w / 2 + v.w / 2 - 10);
+    const box = { dmg: Math.round(T.dmg * a.char.power * 10) / 10, ang: T.ang, bkb: T.bkb, kbg: T.kbg, cx: v.x, cy: v.y - v.h / 2 };
+    this.applyHit({ a, d: v, box, facing: a.facing, proj: null, thrown: true });
+    this.emit('throw', { a, d: v, kind, x: v.x, y: v.y - v.h / 2 });
   }
 
   checkBlastZones() {
@@ -939,6 +1082,7 @@ export class Game {
   }
 
   ko(f) {
+    this.clearGrab(f);
     const killer = f.lastHitter && this.frame - f.lastHitFrame < 600 ? f.lastHitter : null;
     if (killer) killer.stats.kos++;
     else f.stats.sds++;

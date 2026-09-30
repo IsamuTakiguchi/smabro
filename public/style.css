@@ -234,10 +234,8 @@ body.touch[data-screen="battle"] #touch { display: block; }
   transition: transform 0.05s, background 0.05s;
 }
 .tbtn.on { background: rgba(255, 210, 77, 0.5); border-color: #ffd24d; transform: scale(1.1); }
-.tbtn.a { width: 96px; height: 96px; right: 0; top: 56px; background: rgba(255, 90, 54, 0.3); font-size: 18px; }
-.tbtn.b { width: 80px; height: 80px; right: 104px; top: 118px; background: rgba(77, 141, 255, 0.3); }
-.tbtn.j { width: 80px; height: 80px; right: 104px; top: 14px; font-size: 13px; }
-.tbtn.s { width: 64px; height: 64px; right: 16px; top: -24px; font-size: 13px; background: rgba(61, 220, 132, 0.25); }
+.tbtn.a { width: 118px; height: 118px; right: 0; top: 70px; background: rgba(255, 90, 54, 0.32); font-size: 22px; }
+.tbtn.s { width: 90px; height: 90px; right: 128px; top: 110px; font-size: 16px; background: rgba(61, 220, 132, 0.28); }
 #touch .tpause {
   pointer-events: auto;
   position: absolute;

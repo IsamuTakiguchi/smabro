@@ -100,6 +100,10 @@ export class Renderer {
           break;
         case 'projectile': sfx.projectile(); break;
         case 'swing': sfx.swing(); break;
+        case 'grab':
+          this.particles.push({ t: 'ring', x: e.x, y: e.y, r: 12, vr: 3, life: 12, max: 12, color: '#ffffff', size: 4 });
+          sfx.grab();
+          break;
         case 'ledge': sfx.land(); break;
       }
     }
@@ -452,6 +456,16 @@ export class Renderer {
     if (f.state === 'ledge') { bh = [w * 0.55, -h * 0.75 - 4]; fh = [w * 0.6, -h * 0.75]; }
     if (f.state === 'shield' || f.state === 'shieldstun') { fh = [w * 0.5, shY]; bh = [w * 0.35, shY + 8]; }
     if (f.state === 'hitstun') { bh = [-w * 0.6, shY - h * 0.15]; fh = [w * 0.1, shY - h * 0.25]; }
+    if (f.state === 'grabbing') { fh = [w * 0.75, shY + h * 0.12]; bh = [w * 0.6, shY + h * 0.2]; }
+    if (f.state === 'grabbed') { fh = [-w * 0.1, shY - h * 0.3]; bh = [-w * 0.5, shY - h * 0.25]; }
+    if (f.state === 'attack' && f.move && f.move.id === 'throw') {
+      const k = f.moveData.throwKind;
+      const e = Math.min(1, f.moveFrame / 6);
+      if (k === 'up') fh = [w * 0.2, shY - h * 0.45 * e];
+      else if (k === 'down') fh = [w * 0.6, -h * 0.1];
+      else if (k === 'back') { fh = [-w * 0.9 * e, shY]; bh = [-w * 0.7 * e, shY + 6]; }
+      else fh = [w * 0.95 * e, shY];
+    }
     if (limb && !limb.leg && limb.e !== 0) {
       const tx = limb.x * 0.85, ty = limb.y * 0.95;
       const e = limb.e;
@@ -494,7 +508,7 @@ export class Renderer {
 
     // 目
     const blink = t % 180 < 6;
-    const hurt = f.state === 'hitstun' || f.state === 'dizzy';
+    const hurt = f.state === 'hitstun' || f.state === 'dizzy' || f.state === 'grabbed';
     ctx.fillStyle = '#111';
     if (c.id === 'gant') {
       ctx.fillStyle = '#34404f';
@@ -559,6 +573,7 @@ export class Renderer {
     // 攻撃エフェクト（向きを反映したワールド座標）
     if (f.state === 'attack' && f.move) {
       for (const b of f.activeBoxes()) {
+        if (b.grab) continue;
         ctx.save();
         const col = c.accent;
         ctx.globalAlpha = 0.55;

@@ -23,6 +23,28 @@ export class CPUController {
       return inp;
     }
 
+    // つかまれたらレバガチャで脱出
+    if (f.state === 'grabbed') {
+      if (rnd() < 0.3 + this.level * 0.07) { inp.attack = this.toggle; inp.x = this.toggle ? 1 : -1; }
+      return inp;
+    }
+    // つかんだら少し待って投げる（ガケ際なら外へ向かって投げる）
+    if (f.state === 'grabbing') {
+      if (f.stateFrame > 12 + Math.floor(rnd() * 25) || f.stateFrame > 60) {
+        const S = STAGE.main;
+        const outward = f.x > 0 ? 1 : -1;
+        const nearEdge = Math.abs(f.x) > S.right - 160;
+        const r = rnd();
+        inp.attack = true;
+        if (nearEdge) inp.x = outward;
+        else if (r < 0.3) inp.y = -1;
+        else if (r < 0.5) inp.y = 1;
+        else if (r < 0.75) inp.x = -f.facing;
+        else inp.x = f.facing;
+      }
+      return inp;
+    }
+
     // ガケつかまり
     if (f.state === 'ledge') {
       if (this.ledgeWait <= 0) this.ledgeWait = 10 + Math.floor(rnd() * 40);

@@ -47,10 +47,11 @@ test('ダメージが高いほど遠くへふっとぶ（横スマッシュで�
   const distances = [];
   for (const pct of [0, 60, 150]) {
     let n = 0;
-    const atk = { poll: () => { n++; const i = emptyInput(); if (n === 5) { i.x = 1; i.attack = true; } return i; } };
+    // 先にスティックを倒しておき、あとから攻撃 = 横スマッシュ（同時押しは必殺技になる）
+    const atk = { poll: () => { n++; const i = emptyInput(); if (n >= 3 && n <= 12) i.x = 1; if (n === 12) i.attack = true; return i; } };
     const g = new Game({ stocks: 1, players: [{ char: 'blaze', controller: atk }, { char: 'blaze', controller: idle }] });
     const [a, d] = g.fighters;
-    a.x = 0; a.facing = 1; d.x = 60; d.damage = pct;
+    a.x = -40; a.facing = 1; d.x = 60; d.damage = pct;
     let maxX = d.x;
     for (let i = 0; i < 240 && !g.over; i++) { g.step(); maxX = Math.max(maxX, d.x); }
     distances.push({ pct, maxX, ko: d.stocks === 0 });

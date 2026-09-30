@@ -226,6 +226,7 @@ export function packSnapshot(game, events) {
       for (const k of FIELDS) o[k] = ROUND.has(k) ? r1(f[k]) : f[k];
       o.mv = f.move ? f.move.id : null;
       o.dir = f.moveData && f.moveData.dir;
+      o.tk = f.moveData && f.moveData.throwKind;
       o.st = f.stats;
       return o;
     }),
@@ -248,7 +249,7 @@ export function applySnapshot(game, s) {
     if (!f) return;
     for (const k of FIELDS) f[k] = o[k];
     f.move = o.mv ? f.moves[o.mv] : null;
-    f.moveData = { dir: o.dir };
+    f.moveData = { dir: o.dir, throwKind: o.tk };
     f.stats = o.st;
   });
   game.projectiles = s.p.map((p) => {
