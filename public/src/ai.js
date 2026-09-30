@@ -1,5 +1,5 @@
 // CPU プレイヤー
-import { STAGE, emptyInput } from './engine.js';
+import { STAGE, emptyInput, hazardState } from './engine.js';
 
 export class CPUController {
   constructor(level = 5) {
@@ -59,7 +59,7 @@ export class CPUController {
     }
 
     // 復帰
-    const offstage = !f.grounded && (f.x < S.left - 5 || f.x > S.right + 5);
+    const offstage = !f.grounded && (f.x < S.left - 5 || f.x > S.right + 5 || (STAGE.walkoff && Math.abs(f.x) > 700));
     if (offstage || (!f.grounded && f.y > S.top + 10)) {
       const toward = f.x < 0 ? 1 : -1;
       inp.x = toward;
@@ -78,6 +78,20 @@ export class CPUController {
       }
       if (f.state === 'attack' && f.move && f.move.id === 'uspecial') { inp.y = -0.7; }
       return inp;
+    }
+
+    // ステージギミックをよける（車はジャンプ、溶岩の柱からは離れる）
+    const hz = hazardState(STAGE.id, g.frame);
+    if (hz.phase !== 'idle' && rnd() < 0.3 + this.level * 0.07) {
+      if (hz.kind === 'car' && f.grounded && f.actionable) {
+        const carX = hz.phase === 'warn' ? (hz.dir > 0 ? -1500 : 1500) : hz.x;
+        const coming = (f.x - carX) * hz.dir > 0;
+        if (coming && Math.abs(f.x - carX) < 260 + this.level * 15) { inp.jump = this.toggle; inp.x = -hz.dir * 0.3; return inp; }
+      }
+      if (hz.kind === 'lava' && Math.abs(f.x - hz.x) < 120) {
+        inp.x = f.x >= hz.x ? 1 : -1;
+        return inp;
+      }
     }
 
     // ターゲット選択
@@ -161,7 +175,9 @@ export class CPUController {
 
   keepOnStage(f, inp) {
     const S = STAGE.main;
-    if ((f.x < S.left + 50 && inp.x < 0) || (f.x > S.right - 50 && inp.x > 0)) {
+    // 端のない（ウォークオフ）ステージでは画面外へ歩いて出ないようにする
+    const left = Math.max(S.left, STAGE.blast.left + 350), right = Math.min(S.right, STAGE.blast.right - 350);
+    if ((f.x < left + 50 && inp.x < 0) || (f.x > right - 50 && inp.x > 0)) {
       if (!inp.attack && !inp.special) inp.x = 0;
     }
   }
