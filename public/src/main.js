@@ -1,5 +1,5 @@
 // 画面遷移・ゲームループ
-import { Game, CHARACTERS, FPS } from './engine.js';
+import { Game, CHARACTERS, STAGES, FPS } from './engine.js';
 import { CPUController } from './ai.js';
 import { HumanController, initKeyboard, initTouch, isKeyDown, gamepadSnapshot } from './input.js';
 import { Renderer, SLOT_COLORS, drawPortrait } from './render.js';
@@ -39,7 +39,7 @@ const isGuest = () => net?.role === 'guest';
 
 function loadConfig() {
   const def = {
-    stocks: 3, level: 5,
+    stocks: 3, level: 5, stage: 'sky',
     slots: [
       { type: 'human', char: 0 },
       { type: 'cpu', char: 1 },
@@ -106,6 +106,7 @@ function ensureDemo() {
   const ids = [...CHARACTERS].sort(() => Math.random() - 0.5).map((c) => c.id);
   demo = new Game({
     stocks: 2,
+    stage: STAGES[Math.floor(Math.random() * STAGES.length)].id,
     players: ids.map((id) => ({ char: id, controller: new CPUController(6 + Math.floor(Math.random() * 4)) })),
   });
   renderer.updateCamera(demo, true);
@@ -159,7 +160,43 @@ function buildSlots() {
   });
   $('#rule-stocks').textContent = c0.stocks;
   $('#rule-level').textContent = c0.level;
+  updateStageInfo();
   drawPortraits();
+}
+
+// ---------------------------------------------------------------- ステージ選択
+
+const STAGE_CHOICES = [...STAGES.map((st) => st.id), 'random'];
+const stageRenderer = new Renderer($('#stage-preview'));
+
+function updateStageInfo() {
+  const id = cfg().stage || 'sky';
+  const st = STAGES.find((x) => x.id === id);
+  $('#stage-name').textContent = st ? st.name : 'ランダム';
+  $('#stage-desc').textContent = st ? st.desc : '毎回ちがうステージで戦う';
+  drawStagePreview();
+}
+
+function changeStage(d) {
+  if (isGuest() || !cfg()) return;
+  const c0 = cfg();
+  const i = STAGE_CHOICES.indexOf(c0.stage || 'sky');
+  c0.stage = STAGE_CHOICES[(i + d + STAGE_CHOICES.length) % STAGE_CHOICES.length];
+  sfx.select();
+  lobbyChanged();
+}
+
+let previewFrame = 0;
+function drawStagePreview() {
+  if (!cfg()) return;
+  previewFrame++;
+  const id = cfg().stage || 'sky';
+  // ランダムはステージを順番に見せる
+  const shown = id === 'random' ? STAGES[Math.floor(previewFrame / 45) % STAGES.length].id : id;
+  const fake = { fighters: [], projectiles: [], stageId: shown, frame: previewFrame * 2 };
+  stageRenderer.cam = { x: 0, y: -190, z: 0.95 };
+  stageRenderer.draw(fake, { hudBottom: -999 });
+  $('#stage-pick').classList.toggle('random', id === 'random');
 }
 
 function canEditType(i) {
@@ -222,8 +259,11 @@ function startBattle() {
     alert(net ? '2人以上そろえてね！（参加を待つか「なし」をタップしてCPUにできます）' : '2人以上そろえてね！（「なし」をタップしてCPUにできます）');
     return;
   }
-  if (isHost()) net.host.broadcast({ t: 'start', lobby: l });
-  beginBattle(new Game({ players, stocks: l.stocks }));
+  // ランダムならここで決める（参加端末にも決まったステージを送る）
+  const pick = l.stage === 'random' || !STAGES.some((st) => st.id === l.stage)
+    ? STAGES[Math.floor(Math.random() * STAGES.length)].id : l.stage;
+  if (isHost()) net.host.broadcast({ t: 'start', lobby: { ...l, stagePlayed: pick } });
+  beginBattle(new Game({ players, stocks: l.stocks, stage: pick }));
 }
 
 // 参加端末: ホストから届いた設定で表示用のゲームを組み立てる（計算はしない）
@@ -232,7 +272,7 @@ function startGuestBattle(l) {
   net.snaps = [];
   net.lastSent = '';
   const players = makePlayers(l, (s) => (s.type === 'cpu' ? new CPUController(l.level) : null));
-  beginBattle(new Game({ players, stocks: l.stocks }));
+  beginBattle(new Game({ players, stocks: l.stocks, stage: l.stagePlayed || l.stage }));
 }
 
 function beginBattle(g) {
@@ -305,7 +345,7 @@ async function hostRoom() {
   net = {
     role: 'host', host, code: '', mySlot: 0, remoteCtrls: {},
     lobby: {
-      stocks: config.stocks, level: config.level,
+      stocks: config.stocks, level: config.level, stage: config.stage || 'sky',
       slots: [
         { type: 'host', char: config.slots[0].char },
         { type: 'off', char: 1 }, { type: 'off', char: 2 }, { type: 'off', char: 3 },
@@ -486,7 +526,7 @@ function tick() {
     demo.events.length = 0;
     renderer.updateParticles();
     renderer.updateCamera(demo);
-    if (screen === 'select' && demo.frame % 2 === 0) drawPortraits();
+    if (screen === 'select' && demo.frame % 2 === 0) { drawPortraits(); drawStagePreview(); }
   }
 }
 
@@ -559,12 +599,13 @@ function pollGamepadMenu() {
 }
 
 document.addEventListener('click', (e) => {
-  const btn = e.target.closest('[data-action], [data-rule]');
+  const btn = e.target.closest('[data-action], [data-rule], [data-stage]');
   unlockAudio();
   if (!btn) {
     if (screen === 'title' && !e.target.closest('button')) { sfx.select(); setScreen('select'); }
     return;
   }
+  if (btn.dataset.stage) { changeStage(Number(btn.dataset.stage)); return; }
   if (btn.dataset.rule) {
     if (isGuest()) return;
     const c0 = cfg();
