@@ -33,24 +33,26 @@
       <h2>操作説明</h2>
       <p class="lead">相手をふっとばして<strong>画面の外</strong>へ出せば撃墜！ ダメージ%が高いほど遠くへ飛びます。</p>
       <table class="keys">
-        <thead><tr><th></th><th>1P キーボード</th><th>2P キーボード</th><th>ゲームパッド</th></tr></thead>
+        <thead><tr><th></th><th>タッチ</th><th>1P キーボード</th><th>2P キーボード</th><th>ゲームパッド</th></tr></thead>
         <tbody>
-          <tr><th>移動</th><td>A / D</td><td>← / →</td><td>スティック / 十字</td></tr>
-          <tr><th>ジャンプ</th><td>W / Space</td><td>↑ / テンキー0</td><td>X / Y・上</td></tr>
-          <tr><th>しゃがみ・急降下</th><td>S</td><td>↓</td><td>下</td></tr>
-          <tr><th>攻撃</th><td>F</td><td>, / テンキー1</td><td>A</td></tr>
-          <tr><th>必殺技</th><td>G</td><td>. / テンキー2</td><td>B</td></tr>
-          <tr><th>シールド・回避</th><td>H</td><td>/ / テンキー3</td><td>LB / RB / LT / RT</td></tr>
-          <tr><th>オンライン対戦</th><td colspan="3">タイトルの「オンライン対戦」→ 1台が部屋をつくり、ほかの端末は4文字の部屋コード（または招待URL）で参加</td></tr>
-          <tr><th>ポーズ</th><td colspan="2">Esc / P</td><td>START</td></tr>
+          <tr><th>移動</th><td>左半分のスティック</td><td>A / D</td><td>← / →</td><td>スティック</td></tr>
+          <tr><th>ジャンプ</th><td>スティックを上にはじく</td><td>W（または Space）</td><td>↑</td><td>スティック上 / X / Y</td></tr>
+          <tr><th>急降下・すり抜け</th><td colspan="4">スティックを下にはじく</td></tr>
+          <tr><th>攻撃</th><td>攻撃</td><td>F</td><td>, / テンキー1</td><td>A</td></tr>
+          <tr><th>必殺技</th><td colspan="4"><b>スティックをはじくと同時に攻撃</b>（キーボードは G・. / パッドは B でも可）</td></tr>
+          <tr><th>つかみ</th><td colspan="4">相手の近くで<b>スティックを倒さずに攻撃</b>（またはガード中に攻撃）</td></tr>
+          <tr><th>投げ</th><td colspan="4">つかんだまま<b>もう一度攻撃</b>（スティックの向きで前・後ろ・上・下投げ）</td></tr>
+          <tr><th>ガード・回避</th><td>ガード</td><td>H</td><td>/ / テンキー3</td><td>LB / RB / LT / RT</td></tr>
+          <tr><th>ポーズ</th><td>上の Ⅱ</td><td colspan="2">Esc / P</td><td>START</td></tr>
         </tbody>
       </table>
       <ul class="tips">
-        <li><b>攻撃</b>は方向との組み合わせで変化（横＝スマッシュ、上＝アッパー、下＝ローキック、空中では5種類）。</li>
-        <li><b>上＋必殺技</b>は復帰技。ステージの外から戻るときに使おう。</li>
-        <li><b>シールド中に左右</b>で回避、<b>空中でシールド</b>で空中回避。</li>
-        <li>ステージの端に近づくと<b>ガケつかまり</b>。上でのぼる、ジャンプでガケジャンプ。</li>
-        <li>タブレット・スマホでは、<b>画面の左半分のどこでも</b>指を置くとスティックになり、<b>右半分</b>はタップした位置にいちばん近いボタンが反応します（指をすべらせてボタンを切りかえ可能）。</li>
+        <li><b>攻撃はスティックの向きで変化</b>：倒したまま攻撃 → 横スマッシュ・アッパー・ローキック、空中では前・後ろ・上・下・その場の5種類。</li>
+        <li><b>必殺技はスティックを「はじく」と同時に攻撃</b>：上＝復帰技、下＝下必殺技、左右＝その向きへ横必殺技。</li>
+        <li>つかまれたら<b>ボタン連打・スティックをぐりぐり</b>で早く抜け出せます。つかみはガードでは防げません。</li>
+        <li><b>ガード中に左右</b>で回避、<b>空中でガード</b>で空中回避。ステージの端では<b>ガケつかまり</b>（上でのぼる）。</li>
+        <li>タブレット・スマホでは<b>画面の左半分のどこでも</b>指を置くとスティックに。右半分は<b>攻撃・ガードのうち近いほう</b>が反応します。</li>
+        <li><b>オンライン対戦</b>：タイトルの「オンライン対戦」→ 1台が部屋をつくり、ほかの端末は4文字の部屋コード（または招待URL）で参加。</li>
       </ul>
       <button class="btn" data-action="to-title">もどる</button>
     </div>
@@ -132,15 +134,13 @@
     </div>
   </section>
 
-  <!-- タッチ操作（左半分：どこでも出るスティック／右半分：いちばん近いボタンが反応） -->
+  <!-- タッチ操作（左半分：どこでも出るスティック／右半分：攻撃・ガードのうち近いほうが反応） -->
   <div id="touch" aria-hidden="true">
     <div class="tzone left-zone"></div>
     <div class="tzone right-zone"></div>
     <div class="stick idle"><div class="knob"></div></div>
     <div class="abtns">
       <div data-btn="attack" class="tbtn a">攻撃</div>
-      <div data-btn="special" class="tbtn b">必殺</div>
-      <div data-btn="jump" class="tbtn j">ジャンプ</div>
       <div data-btn="shield" class="tbtn s">ガード</div>
     </div>
     <button id="touch-pause" class="tpause">Ⅱ</button>

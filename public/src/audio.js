@@ -73,6 +73,7 @@ export const sfx = {
     noise({ dur: 0.08 + p * 0.25, vol: 0.25 + p * 0.35, freq: 2200 - p * 1500, q: 0.8 });
     tone({ type: 'square', f0: 300 - p * 150, f1: 60, dur: 0.08 + p * 0.2, vol: 0.18 + p * 0.2 });
   },
+  grab() { noise({ dur: 0.08, vol: 0.2, freq: 900, q: 1.2 }); tone({ type: 'square', f0: 240, f1: 180, dur: 0.07, vol: 0.12 }); },
   swing() { noise({ dur: 0.07, vol: 0.08, freq: 3500, q: 2, type: 'highpass' }); },
   jump() { tone({ type: 'triangle', f0: 280, f1: 560, dur: 0.09, vol: 0.15 }); },
   land() { noise({ dur: 0.06, vol: 0.1, freq: 400, q: 1 }); },
