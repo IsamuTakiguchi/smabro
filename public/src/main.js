@@ -702,5 +702,10 @@ if (roomParam.length === 4) {
 }
 requestAnimationFrame(frame);
 
+// ホーム画面から起動できるようにサービスワーカーを登録
+if ('serviceWorker' in navigator && (location.protocol === 'https:' || location.hostname === 'localhost')) {
+  window.addEventListener('load', () => navigator.serviceWorker.register('sw.js').catch(() => {}));
+}
+
 // デバッグ用
 window.__blast = { get game() { return game; }, get net() { return net; }, get screen() { return screen; }, isKeyDown };
