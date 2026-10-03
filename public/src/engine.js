@@ -180,44 +180,44 @@ setStage('sky');
 
 export const CHARACTERS = [
   {
-    id: 'blaze', name: 'ブレイズ', title: '炎の格闘家',
-    desc: 'バランス型。火球と昇炎拳で戦う。',
-    color: '#ff5a36', accent: '#ffd166', dark: '#8c1c0a',
+    id: 'blaze', name: 'ヒノコ', title: 'ちびドラゴン',
+    desc: 'げんきいっぱいの子ドラゴン。しっぽの炎がじまん！',
+    color: '#ff8a3d', accent: '#ffd166', dark: '#b8461a', belly: '#ffe3a3',
     w: 44, h: 84, weight: 100, walk: 6.4, airSpeed: 4.9, airAccel: 0.5,
     jump: 17, dblJump: 15.5, jumps: 2, gravity: 0.85, maxFall: 13, fastFall: 19,
     power: 1.0, speed: 1.0, reach: 1.0,
     specials: { neutral: 'fireball', up: 'flameUpper', down: 'flameBurst' },
-    specialNames: ['ファイアボール', '昇炎拳', 'フレイムバースト'],
+    specialNames: ['ひのたま', 'ほのおジャンプ', 'ドッカーン'],
   },
   {
-    id: 'gant', name: 'ガント', title: '鋼鉄の巨漢',
-    desc: '重量級。動きは遅いが一撃が重い。',
-    color: '#7b8fa6', accent: '#f2c14e', dark: '#34404f',
+    id: 'gant', name: 'ゴロタ', title: 'いわグマ',
+    desc: '岩のこうらをせおった力もち。ゆっくりだけどパワーはいちばん！',
+    color: '#b08968', accent: '#f2c14e', dark: '#6b4a32', belly: '#ecdcc6',
     w: 58, h: 98, weight: 128, walk: 4.9, airSpeed: 4.1, airAccel: 0.38,
     jump: 16, dblJump: 14.5, jumps: 2, gravity: 0.95, maxFall: 15, fastFall: 21,
     power: 1.25, speed: 0.85, reach: 1.15,
     specials: { neutral: 'shockPunch', up: 'rocketJump', down: 'groundPound' },
-    specialNames: ['ショックパンチ', 'ロケットジャンプ', 'グラウンドパウンド'],
+    specialNames: ['ゴロゴロパンチ', 'ロケットずつき', 'ドスンじしん'],
   },
   {
-    id: 'zephyr', name: 'ゼファー', title: '疾風の忍',
-    desc: '軽量級。3段ジャンプと素早い連撃。',
-    color: '#2ecc71', accent: '#e8fff0', dark: '#0f5c33',
+    id: 'zephyr', name: 'ピピ', title: 'そよかぜバード',
+    desc: 'すばしっこい小鳥。3回ジャンプで空をとびまわる！',
+    color: '#4cd38a', accent: '#e8fff0', dark: '#1e8a52', belly: '#eafff2',
     w: 38, h: 74, weight: 80, walk: 8, airSpeed: 5.9, airAccel: 0.62,
     jump: 16.5, dblJump: 14, jumps: 3, gravity: 0.78, maxFall: 11.5, fastFall: 17,
     power: 0.82, speed: 1.2, reach: 0.9,
     specials: { neutral: 'windBlade', up: 'galeDash', down: 'cyclone' },
-    specialNames: ['ウィンドブレード', '疾風迅雷', 'サイクロン'],
+    specialNames: ['かぜカッター', 'ビュンとっしん', 'くるくるたつまき'],
   },
   {
-    id: 'misty', name: 'ミスティ', title: '星詠みの魔導士',
-    desc: 'ふわふわ浮遊。大きな魔法弾とカウンター。',
-    color: '#a66bff', accent: '#7ff0ff', dark: '#4a2386',
+    id: 'misty', name: 'ミルル', title: 'ほしうさぎ',
+    desc: 'ふわふわ浮かぶ星のうさぎ。まほうの星とはねかえしが得意！',
+    color: '#c9a8ff', accent: '#7ff0ff', dark: '#7b5cc7', belly: '#fff0ff',
     w: 40, h: 80, weight: 90, walk: 5.5, airSpeed: 5.1, airAccel: 0.48,
     jump: 15.5, dblJump: 14.5, jumps: 2, gravity: 0.6, maxFall: 9.5, fastFall: 15,
     power: 0.95, speed: 0.95, reach: 1.05,
     specials: { neutral: 'arcaneOrb', up: 'levitate', down: 'counter' },
-    specialNames: ['アルカナオーブ', 'レビテート', 'ミラーカウンター'],
+    specialNames: ['きらきらボール', 'ふわふわジャンプ', 'はねかえしミラー'],
   },
 ];
 
@@ -258,11 +258,11 @@ function spawnProjectile(g, f, p) {
 }
 
 const SPECIALS = {
-  // --- ブレイズ
+  // --- ヒノコ（ちびドラゴン）
   fireball(c) {
     const { s, d, R } = helpers(c);
     return {
-      name: 'ファイアボール', total: s(34), boxes: [], landLag: 8,
+      name: 'ひのたま', total: s(34), boxes: [], landLag: 8,
       tick(f, fr, g) {
         if (fr === s(12)) spawnProjectile(g, f, { kind: 'fire', ox: R(40), oy: -R(50), vx: 11, r: 15, dmg: d(6), ang: 30, bkb: 18, kbg: 40, life: 75 });
       },
@@ -271,7 +271,7 @@ const SPECIALS = {
   flameUpper(c) {
     const { s, box } = helpers(c);
     return {
-      name: '昇炎拳', total: s(46), helplessAfter: true, landLag: 14,
+      name: 'ほのおジャンプ', total: s(46), helplessAfter: true, landLag: 14,
       boxes: [box(4, 8, 22, -60, 32, 7, 80, 40, 40, { group: 1 }), box(9, 20, 10, -90, 32, 5, 85, 45, 70, { group: 2 })],
       tick(f, fr) {
         if (fr === s(4)) { f.vy = -15.5; f.vx = f.input.x * 4; f.grounded = false; f.upBUsed = true; }
@@ -280,13 +280,13 @@ const SPECIALS = {
   },
   flameBurst(c) {
     const { s, box } = helpers(c);
-    return { name: 'フレイムバースト', total: s(52), landLag: 16, boxes: [box(18, 23, 0, -45, 72, 15, 50, 40, 92)], slowFall: true };
+    return { name: 'ドッカーン', total: s(52), landLag: 16, boxes: [box(18, 23, 0, -45, 72, 15, 50, 40, 92)], slowFall: true };
   },
-  // --- ガント
+  // --- ゴロタ（いわグマ）
   shockPunch(c) {
     const { s, box } = helpers(c);
     return {
-      name: 'ショックパンチ', total: s(62), landLag: 16,
+      name: 'ゴロゴロパンチ', total: s(62), landLag: 16,
       boxes: [box(26, 31, 58, -50, 38, 19, 36, 40, 104)],
       tick(f, fr) {
         if (fr >= s(24) && fr <= s(30)) f.vx = 9 * f.facing;
@@ -296,7 +296,7 @@ const SPECIALS = {
   rocketJump(c) {
     const { s, box } = helpers(c);
     return {
-      name: 'ロケットジャンプ', total: s(44), helplessAfter: true, landLag: 16,
+      name: 'ロケットずつき', total: s(44), helplessAfter: true, landLag: 16,
       boxes: [box(6, 18, 0, -50, 42, 9, 85, 35, 60)],
       tick(f, fr) {
         if (fr === s(6)) { f.vy = -15; f.vx = f.input.x * 5; f.grounded = false; f.upBUsed = true; }
@@ -306,7 +306,7 @@ const SPECIALS = {
   groundPound(c) {
     const { s, box } = helpers(c);
     return {
-      name: 'グラウンドパウンド', total: s(56), landLag: 20,
+      name: 'ドスンじしん', total: s(56), landLag: 20,
       boxes: [box(10, 55, 0, 0, 34, 12, 280, 20, 70, { airOnly: true }), box(16, 20, 0, -10, 85, 13, 60, 40, 80, { groundOnly: true })],
       tick(f, fr, g) {
         if (!f.grounded && fr === s(10)) { f.vy = 23; f.fastFalling = true; }
@@ -322,11 +322,11 @@ const SPECIALS = {
       noLandCancel: true,
     };
   },
-  // --- ゼファー
+  // --- ピピ（そよかぜバード）
   windBlade(c) {
     const { s, d, R } = helpers(c);
     return {
-      name: 'ウィンドブレード', total: s(26), boxes: [], landLag: 6,
+      name: 'かぜカッター', total: s(26), boxes: [], landLag: 6,
       tick(f, fr, g) {
         if (fr === s(8)) spawnProjectile(g, f, { kind: 'wind', ox: R(34), oy: -R(45), vx: 16, r: 11, dmg: d(4), ang: 25, bkb: 12, kbg: 30, life: 45 });
       },
@@ -335,7 +335,7 @@ const SPECIALS = {
   galeDash(c) {
     const { s, box } = helpers(c);
     return {
-      name: '疾風迅雷', total: s(40), helplessAfter: true, landLag: 12,
+      name: 'ビュンとっしん', total: s(40), helplessAfter: true, landLag: 12,
       boxes: [box(9, 20, 0, -40, 32, 7, 70, 30, 55)],
       tick(f, fr) {
         if (fr === s(9)) {
@@ -357,13 +357,13 @@ const SPECIALS = {
     const boxes = [];
     for (let i = 0; i < 5; i++) boxes.push(box(8 + i * 6, 11 + i * 6, 0, -40, 46, 2, 88, 8, 10, { group: i }));
     boxes.push(box(38, 42, 0, -40, 52, 5, 50, 38, 90, { group: 9 }));
-    return { name: 'サイクロン', total: s(54), landLag: 10, boxes, slowFall: true };
+    return { name: 'くるくるたつまき', total: s(54), landLag: 10, boxes, slowFall: true };
   },
-  // --- ミスティ
+  // --- ミルル（ほしうさぎ）
   arcaneOrb(c) {
     const { s, d, R } = helpers(c);
     return {
-      name: 'アルカナオーブ', total: s(44), boxes: [], landLag: 10,
+      name: 'きらきらボール', total: s(44), boxes: [], landLag: 10,
       tick(f, fr, g) {
         if (fr === s(18)) spawnProjectile(g, f, { kind: 'orb', ox: R(40), oy: -R(48), vx: 5.5, r: 16, grow: 0.12, dmg: d(11), ang: 40, bkb: 30, kbg: 70, life: 140 });
       },
@@ -372,7 +372,7 @@ const SPECIALS = {
   levitate(c) {
     const { s, box } = helpers(c);
     return {
-      name: 'レビテート', total: s(60), helplessAfter: true, landLag: 12,
+      name: 'ふわふわジャンプ', total: s(60), helplessAfter: true, landLag: 12,
       boxes: [box(6, 12, 0, -40, 38, 6, 80, 40, 50)],
       tick(f, fr) {
         if (fr === 1) { f.grounded = false; f.upBUsed = true; }
@@ -382,7 +382,7 @@ const SPECIALS = {
   },
   counter(c) {
     const { s } = helpers(c);
-    return { name: 'ミラーカウンター', total: s(46), boxes: [], landLag: 10, counter: [s(5), s(28)], slowFall: true };
+    return { name: 'はねかえしミラー', total: s(46), boxes: [], landLag: 10, counter: [s(5), s(28)], slowFall: true };
   },
 };
 

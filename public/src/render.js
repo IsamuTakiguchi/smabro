@@ -839,22 +839,10 @@ export class Renderer {
     const hipY = -h * 0.38, shY = -h * 0.66, headY = -h * 0.82, headR = w * 0.42;
     const run = f.state === 'run' ? Math.sin(f.stateFrame * 0.45) : 0;
     const air = !f.grounded && f.state !== 'ledge';
-    const limbW = Math.max(6, w * 0.2);
     ctx.lineCap = 'round';
     ctx.lineJoin = 'round';
 
-    // 脚
-    const drawLeg = (side, fx, fy) => {
-      ctx.strokeStyle = c.dark;
-      ctx.lineWidth = limbW;
-      ctx.beginPath();
-      ctx.moveTo(side * w * 0.16, hipY);
-      const kx = (side * w * 0.16 + fx) / 2 + 6, ky = (hipY + fy) / 2;
-      ctx.quadraticCurveTo(kx, ky, fx, fy);
-      ctx.stroke();
-      ctx.fillStyle = '#222';
-      ctx.beginPath(); ctx.ellipse(fx + 4, fy - 2, limbW * 0.75, limbW * 0.5, 0, 0, Math.PI * 2); ctx.fill();
-    };
+    // 足と手の位置（攻撃中は技の当たり判定の方へのばす）
     let lf = [-w * 0.2 + run * 16, 0], rf = [w * 0.2 - run * 16, 0];
     if (air) { lf = [-w * 0.15, -h * 0.1]; rf = [w * 0.28, -h * 0.16]; }
     if (f.state === 'ledge') { lf = [w * 0.1, -h * 0.02]; rf = [w * 0.3, -h * 0.1]; }
@@ -862,33 +850,6 @@ export class Renderer {
       const tx = limb.x * 0.9, ty = Math.min(-4, limb.y);
       rf = [rf[0] + (tx - rf[0]) * limb.e, rf[1] + (ty - rf[1]) * limb.e];
     }
-    if (c.id !== 'misty') {
-      drawLeg(-1, lf[0], lf[1]);
-      drawLeg(1, rf[0], rf[1]);
-    } else {
-      drawLeg(-1, lf[0] * 0.6, lf[1]);
-      drawLeg(1, rf[0], rf[1]);
-      // ローブ
-      ctx.fillStyle = c.dark;
-      ctx.beginPath();
-      ctx.moveTo(-w * 0.35, shY + 8);
-      ctx.lineTo(w * 0.35, shY + 8);
-      ctx.lineTo(w * 0.55 + run * 3, -h * 0.12);
-      ctx.lineTo(-w * 0.55 - run * 3, -h * 0.12);
-      ctx.fill();
-    }
-
-    // 後ろの腕
-    const drawArm = (side, hx, hy, front) => {
-      ctx.strokeStyle = front ? c.color : c.dark;
-      ctx.lineWidth = limbW * (c.id === 'gant' ? 1.3 : 1);
-      ctx.beginPath();
-      ctx.moveTo(side * w * 0.3, shY + 6);
-      ctx.lineTo(hx, hy);
-      ctx.stroke();
-      ctx.fillStyle = c.accent;
-      ctx.beginPath(); ctx.arc(hx, hy, limbW * (c.id === 'gant' ? 0.95 : 0.7), 0, Math.PI * 2); ctx.fill();
-    };
     let bh = [-w * 0.45 - run * 10, shY + h * 0.24];
     let fh = [w * 0.45 + run * 10, shY + h * 0.24];
     if (air) { bh = [-w * 0.6, shY - h * 0.05]; fh = [w * 0.55, shY + h * 0.05]; }
@@ -911,101 +872,11 @@ export class Renderer {
       if (e < 0) fh = [fh[0] - 14 * -e * 3, fh[1]];
       else fh = [fh[0] + (tx - fh[0]) * e, fh[1] + (ty - fh[1]) * e];
     }
-    drawArm(-1, bh[0], bh[1], false);
 
-    // 胴体
-    ctx.fillStyle = c.color;
-    const tw = w * (c.id === 'gant' ? 0.95 : 0.78);
-    roundRect(ctx, -tw / 2, shY - 4, tw, hipY - shY + 12, tw * 0.3);
-    ctx.fill();
-    ctx.fillStyle = 'rgba(255,255,255,0.18)';
-    roundRect(ctx, -tw / 2 + 4, shY, tw * 0.35, hipY - shY, tw * 0.2);
-    ctx.fill();
-    // ベルト
-    ctx.fillStyle = c.accent;
-    ctx.fillRect(-tw / 2, hipY - 4, tw, 6);
-    if (c.id === 'gant') {
-      ctx.fillStyle = '#9fb2c6';
-      ctx.beginPath(); ctx.arc(-tw / 2, shY + 4, w * 0.2, 0, Math.PI * 2); ctx.arc(tw / 2, shY + 4, w * 0.2, 0, Math.PI * 2); ctx.fill();
-    }
-
-    // ゼファーのマフラー
-    if (c.id === 'zephyr') {
-      ctx.strokeStyle = c.accent;
-      ctx.lineWidth = 6;
-      ctx.beginPath();
-      ctx.moveTo(-2, shY);
-      const wave = Math.sin(t * 0.3) * 6;
-      const trail = Math.min(1, Math.abs(f.vx) / 6 + (air ? 0.6 : 0.2));
-      ctx.quadraticCurveTo(-20 * trail - 10, shY - 4 + wave, -46 * trail - 10, shY + 6 - wave);
-      ctx.stroke();
-    }
-
-    // 頭
-    ctx.fillStyle = c.id === 'gant' ? '#9fb2c6' : '#ffe0c2';
-    ctx.beginPath(); ctx.arc(0, headY, headR, 0, Math.PI * 2); ctx.fill();
-
-    // 目
     const blink = t % 180 < 6;
     const hurt = f.state === 'hitstun' || f.state === 'dizzy' || f.state === 'grabbed';
-    ctx.fillStyle = '#111';
-    if (c.id === 'gant') {
-      ctx.fillStyle = '#34404f';
-      roundRect(ctx, -headR * 0.2, headY - headR * 0.35, headR * 1.15, headR * 0.5, 4); ctx.fill();
-      ctx.fillStyle = hurt ? '#ff5050' : '#6ff';
-      ctx.fillRect(headR * 0.1, headY - headR * 0.2, headR * 0.7, headR * 0.18);
-    } else if (hurt) {
-      ctx.strokeStyle = '#111'; ctx.lineWidth = 2.5;
-      for (const ex of [headR * 0.15, headR * 0.6]) {
-        ctx.beginPath(); ctx.moveTo(ex - 4, headY - 6); ctx.lineTo(ex + 4, headY + 2); ctx.moveTo(ex + 4, headY - 6); ctx.lineTo(ex - 4, headY + 2); ctx.stroke();
-      }
-    } else {
-      for (const ex of [headR * 0.15, headR * 0.6]) {
-        if (blink) ctx.fillRect(ex - 3, headY - 2, 7, 2);
-        else { ctx.beginPath(); ctx.ellipse(ex, headY - 2, 3, 5.5, 0, 0, Math.PI * 2); ctx.fill(); }
-      }
-    }
-
-    // キャラ別の頭部
-    if (c.id === 'blaze') {
-      ctx.fillStyle = '#ff7b2e';
-      ctx.beginPath();
-      ctx.moveTo(-headR, headY - 2);
-      for (let i = 0; i <= 5; i++) {
-        const a = Math.PI + (i / 5) * Math.PI;
-        const r = headR * (i % 2 ? 1.05 : 1.6);
-        ctx.lineTo(Math.cos(a) * r - 4, headY + Math.sin(a) * r - 2);
-      }
-      ctx.lineTo(headR, headY - headR * 0.4);
-      ctx.fill();
-      ctx.fillStyle = c.accent;
-      ctx.fillRect(-headR, headY - headR * 0.55, headR * 2, 5);
-    } else if (c.id === 'zephyr') {
-      ctx.fillStyle = c.dark;
-      ctx.beginPath(); ctx.arc(0, headY, headR, Math.PI * 0.95, Math.PI * 2.05); ctx.fill();
-      ctx.fillStyle = '#123';
-      ctx.fillRect(-headR * 0.2, headY + headR * 0.25, headR * 1.2, headR * 0.5);
-    } else if (c.id === 'misty') {
-      ctx.fillStyle = c.dark;
-      ctx.beginPath();
-      ctx.ellipse(0, headY - headR * 0.5, headR * 1.6, headR * 0.35, -0.1, 0, Math.PI * 2);
-      ctx.fill();
-      ctx.beginPath();
-      ctx.moveTo(-headR * 0.9, headY - headR * 0.6);
-      ctx.lineTo(headR * 0.9, headY - headR * 0.6);
-      ctx.lineTo(-headR * 0.9 - Math.sin(t * 0.1) * 4, headY - headR * 2.6);
-      ctx.fill();
-      ctx.fillStyle = c.accent;
-      star(ctx, -headR * 0.1, headY - headR * 1.2, 5);
-      ctx.fillStyle = '#c9a3ff';
-      ctx.fillRect(-headR, headY - headR * 0.3, headR * 0.4, headR * 1.4);
-    } else if (c.id === 'gant') {
-      ctx.fillStyle = c.accent;
-      ctx.fillRect(-3, headY - headR - 8, 6, 10);
-    }
-
-    // 前の腕
-    drawArm(1, fh[0], fh[1], true);
+    const mouthOpen = f.state === 'attack' || f.state === 'grabbing';
+    drawMonster(ctx, c, { w, h, t, run, air, lf, rf, bh, fh, blink, hurt, mouthOpen, vx: f.vx });
 
     ctx.restore();
 
@@ -1080,7 +951,7 @@ export class Renderer {
 
     // プレイヤー表示
     if (opts.noTag) return;
-    const tagY = f.y - h - (c.id === 'misty' ? 50 : 26);
+    const tagY = f.y - h - (c.id === 'misty' ? 86 : 30);
     ctx.save();
     ctx.fillStyle = SLOT_COLORS[f.slot];
     ctx.beginPath();
@@ -1280,6 +1151,158 @@ export function damageColor(p) {
   if (p < 110) return '#ffa94d';
   if (p < 150) return '#ff5a3c';
   return '#d0132b';
+}
+
+// ---------------------------------------------------------------- かわいいモンスターの描画
+// 右向き・足元が原点。まんまるのからだ、大きな目、ほっぺ、種類ごとの耳やしっぽ
+
+function blob(ctx, x, y, rx, ry, fill, stroke, lw = 3) {
+  ctx.beginPath();
+  ctx.ellipse(x, y, Math.max(1, rx), Math.max(1, ry), 0, 0, Math.PI * 2);
+  ctx.fillStyle = fill; ctx.fill();
+  if (stroke) { ctx.strokeStyle = stroke; ctx.lineWidth = lw; ctx.stroke(); }
+}
+
+function drawMonster(ctx, c, o) {
+  const { w, h, t, run, air, lf, rf, bh, fh, blink, hurt, mouthOpen } = o;
+  const line = c.dark;
+  const bob = Math.abs(run) * 3;
+  const cy = -h * 0.46 - bob;
+  const rx = w * 0.64, ry = h * 0.44;
+  const top = cy - ry;
+  ctx.lineCap = 'round';
+  ctx.lineJoin = 'round';
+
+  // ---- うしろ側のパーツ
+  if (c.id === 'blaze') {
+    // しっぽ＋しっぽの炎
+    ctx.strokeStyle = c.color; ctx.lineWidth = w * 0.22;
+    ctx.beginPath(); ctx.moveTo(-rx * 0.6, cy + ry * 0.45); ctx.quadraticCurveTo(-rx * 1.5, cy + ry * 0.5, -rx * 1.45, cy - ry * 0.15); ctx.stroke();
+    const fl = 1 + Math.sin(t * 0.5) * 0.15;
+    ctx.fillStyle = '#ff5a1f';
+    ctx.beginPath(); ctx.ellipse(-rx * 1.45, cy - ry * 0.35, w * 0.17 * fl, w * 0.3 * fl, -0.2, 0, Math.PI * 2); ctx.fill();
+    ctx.fillStyle = '#ffd24d';
+    ctx.beginPath(); ctx.ellipse(-rx * 1.45, cy - ry * 0.28, w * 0.09 * fl, w * 0.17 * fl, -0.2, 0, Math.PI * 2); ctx.fill();
+    // 小さな羽
+    ctx.fillStyle = '#ff6b6b';
+    ctx.beginPath(); ctx.moveTo(-rx * 0.4, cy - ry * 0.25); ctx.lineTo(-rx * 1.05, cy - ry * 0.75 + Math.sin(t * 0.3) * 4); ctx.lineTo(-rx * 0.85, cy - ry * 0.1); ctx.closePath(); ctx.fill();
+  } else if (c.id === 'gant') {
+    // 岩のこうら
+    ctx.fillStyle = '#8d99a6'; ctx.strokeStyle = '#4f5b66'; ctx.lineWidth = 3;
+    ctx.beginPath();
+    ctx.moveTo(-rx * 0.2, top + ry * 0.2);
+    ctx.lineTo(-rx * 0.85, top + ry * 0.35);
+    ctx.lineTo(-rx * 1.2, cy - ry * 0.1);
+    ctx.lineTo(-rx * 1.15, cy + ry * 0.45);
+    ctx.lineTo(-rx * 0.5, cy + ry * 0.75);
+    ctx.closePath(); ctx.fill(); ctx.stroke();
+    ctx.beginPath(); ctx.moveTo(-rx * 0.85, top + ry * 0.35); ctx.lineTo(-rx * 0.75, cy + ry * 0.2); ctx.lineTo(-rx * 1.15, cy + ry * 0.45); ctx.moveTo(-rx * 0.75, cy + ry * 0.2); ctx.lineTo(-rx * 0.5, cy + ry * 0.75); ctx.stroke();
+  } else if (c.id === 'zephyr') {
+    // しっぽの羽
+    ctx.fillStyle = c.dark;
+    for (const a of [-0.5, 0, 0.5]) {
+      ctx.save(); ctx.translate(-rx * 0.85, cy + ry * 0.25); ctx.rotate(Math.PI + a + Math.sin(t * 0.3) * 0.1);
+      ctx.beginPath(); ctx.ellipse(w * 0.3, 0, w * 0.32, w * 0.1, 0, 0, Math.PI * 2); ctx.fill();
+      ctx.restore();
+    }
+  } else if (c.id === 'misty') {
+    // ふわふわしっぽ
+    blob(ctx, -rx * 0.95, cy + ry * 0.35, w * 0.24, w * 0.24, '#ffffff', '#d9c7ff', 2);
+  }
+
+  // うしろの手・うしろの足
+  blob(ctx, bh[0], bh[1], w * 0.17, w * 0.15, c.dark, line, 2);
+  blob(ctx, lf[0], lf[1] - w * 0.1, w * 0.26, w * 0.15, c.dark, line, 2);
+
+  // ---- からだ
+  blob(ctx, 0, cy, rx, ry, c.color, line, 3);
+  // おなか
+  blob(ctx, rx * 0.22, cy + ry * 0.3, rx * 0.55, ry * 0.5, c.belly);
+  // てかり
+  ctx.fillStyle = 'rgba(255,255,255,0.35)';
+  ctx.beginPath(); ctx.ellipse(-rx * 0.35, cy - ry * 0.55, rx * 0.22, ry * 0.12, -0.5, 0, Math.PI * 2); ctx.fill();
+
+  // ---- 頭のパーツ
+  if (c.id === 'blaze') {
+    ctx.fillStyle = '#fff1c9'; ctx.strokeStyle = line; ctx.lineWidth = 2;
+    for (const x of [-rx * 0.15, rx * 0.35]) {
+      ctx.beginPath(); ctx.moveTo(x - w * 0.09, top + ry * 0.12); ctx.lineTo(x, top - h * 0.1); ctx.lineTo(x + w * 0.09, top + ry * 0.12); ctx.closePath(); ctx.fill(); ctx.stroke();
+    }
+  } else if (c.id === 'gant') {
+    for (const x of [-rx * 0.45, rx * 0.4]) {
+      blob(ctx, x, top + ry * 0.1, w * 0.17, w * 0.17, c.color, line, 3);
+      blob(ctx, x, top + ry * 0.1, w * 0.08, w * 0.08, c.belly);
+    }
+  } else if (c.id === 'zephyr') {
+    ctx.fillStyle = '#c6f26b'; ctx.strokeStyle = line; ctx.lineWidth = 2;
+    for (const [a, len] of [[-0.5, 0.32], [0, 0.4], [0.5, 0.3]]) {
+      ctx.save(); ctx.translate(rx * 0.05, top + 4); ctx.rotate(-Math.PI / 2 + a + Math.sin(t * 0.2 + a) * 0.08);
+      ctx.beginPath(); ctx.ellipse(w * len * 0.5, 0, w * len * 0.55, w * 0.08, 0, 0, Math.PI * 2); ctx.fill(); ctx.stroke();
+      ctx.restore();
+    }
+  } else if (c.id === 'misty') {
+    for (const [x, tilt] of [[-rx * 0.3, -0.25], [rx * 0.3, 0.2]]) {
+      ctx.save(); ctx.translate(x, top + ry * 0.15); ctx.rotate(tilt + Math.sin(t * 0.08 + x) * 0.06);
+      blob(ctx, 0, -h * 0.2, w * 0.15, h * 0.24, c.color, line, 3);
+      blob(ctx, 0, -h * 0.2, w * 0.07, h * 0.17, '#ffc4e1');
+      ctx.restore();
+    }
+    // 浮かぶ星
+    ctx.fillStyle = '#ffe14d'; ctx.strokeStyle = '#d9a400'; ctx.lineWidth = 2;
+    star(ctx, rx * 0.1, top - h * 0.5 + Math.sin(t * 0.1) * 5, w * 0.17);
+    ctx.stroke();
+  }
+
+  // ---- 顔
+  const ey = cy - ry * 0.28;
+  const eyes = [rx * 0.12, rx * 0.56];
+  if (hurt) {
+    ctx.strokeStyle = '#2b1a1a'; ctx.lineWidth = 3;
+    for (const ex of eyes) {
+      ctx.beginPath(); ctx.moveTo(ex - 5, ey - 6); ctx.lineTo(ex + 3, ey); ctx.lineTo(ex - 5, ey + 6); ctx.stroke();
+    }
+  } else if (blink) {
+    ctx.strokeStyle = '#2b1a1a'; ctx.lineWidth = 3;
+    for (const ex of eyes) { ctx.beginPath(); ctx.arc(ex, ey - 2, w * 0.09, 0.2, Math.PI - 0.2); ctx.stroke(); }
+  } else {
+    for (const ex of eyes) {
+      blob(ctx, ex, ey, w * 0.135, h * 0.105, '#2b1a1a');
+      blob(ctx, ex + w * 0.045, ey - h * 0.04, w * 0.055, w * 0.055, '#ffffff');
+      blob(ctx, ex - w * 0.035, ey + h * 0.035, w * 0.025, w * 0.025, '#ffffff');
+    }
+    if (c.id === 'gant' && mouthOpen) {
+      ctx.strokeStyle = line; ctx.lineWidth = 3;
+      for (const ex of eyes) { ctx.beginPath(); ctx.moveTo(ex - 7, ey - h * 0.12); ctx.lineTo(ex + 7, ey - h * 0.09); ctx.stroke(); }
+    }
+  }
+  // ほっぺ
+  ctx.fillStyle = 'rgba(255,110,140,0.55)';
+  for (const ex of [rx * -0.12, rx * 0.8]) { ctx.beginPath(); ctx.ellipse(ex, ey + h * 0.09, w * 0.09, w * 0.055, 0, 0, Math.PI * 2); ctx.fill(); }
+  // 口・くちばし
+  const mx = rx * 0.36, my = ey + h * 0.1;
+  if (c.id === 'zephyr') {
+    ctx.fillStyle = '#ffa726'; ctx.strokeStyle = '#c66900'; ctx.lineWidth = 2;
+    ctx.beginPath(); ctx.moveTo(rx * 0.7, my - h * 0.04); ctx.lineTo(rx * 1.12, my + (mouthOpen ? -h * 0.03 : 0)); ctx.lineTo(rx * 0.7, my + h * 0.04); ctx.closePath(); ctx.fill(); ctx.stroke();
+    if (mouthOpen) { ctx.beginPath(); ctx.moveTo(rx * 0.72, my + h * 0.03); ctx.lineTo(rx * 1.05, my + h * 0.06); ctx.lineTo(rx * 0.72, my + h * 0.06); ctx.fill(); ctx.stroke(); }
+  } else if (mouthOpen || hurt) {
+    blob(ctx, mx, my, w * 0.08, h * 0.05, '#8a1c2b');
+    blob(ctx, mx, my + h * 0.02, w * 0.05, h * 0.02, '#ff7a8a');
+  } else {
+    ctx.strokeStyle = '#2b1a1a'; ctx.lineWidth = 2.5;
+    ctx.beginPath(); ctx.arc(mx - w * 0.05, my - 2, w * 0.05, 0.1, Math.PI - 0.3); ctx.arc(mx + w * 0.05, my - 2, w * 0.05, 0.3, Math.PI - 0.1); ctx.stroke();
+  }
+
+  // ---- 前の足・前の手
+  blob(ctx, rf[0], rf[1] - w * 0.1, w * 0.27, w * 0.16, c.dark, line, 2);
+  if (c.id === 'zephyr') {
+    // 羽の手
+    ctx.save(); ctx.translate(fh[0], fh[1]); ctx.rotate(-0.4 + Math.sin(t * (air ? 0.6 : 0.15)) * (air ? 0.6 : 0.15));
+    blob(ctx, 0, 0, w * 0.26, w * 0.13, c.dark, line, 2);
+    ctx.restore();
+  } else {
+    const pr = w * (c.id === 'gant' ? 0.22 : 0.16);
+    blob(ctx, fh[0], fh[1], pr, pr * 0.9, c.color, line, 2.5);
+  }
 }
 
 function roundRect(ctx, x, y, w, h, r) {
