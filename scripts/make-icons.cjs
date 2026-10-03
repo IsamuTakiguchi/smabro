@@ -45,11 +45,11 @@ const SIZES = [
       pc.width = pc.height = 512;
       drawPortrait(pc, CHARACTERS[0], 30); // 30: まばたきしていないフレーム
       // 影をつけて背景から浮かせ、上半身を大きく見せる
-      const ps = S * 1.0 * k;
+      const ps = S * 0.92 * k;
       ctx.save();
       ctx.shadowColor = 'rgba(30,0,50,0.95)';
       ctx.shadowBlur = S * 0.035;
-      for (let i = 0; i < 3; i++) ctx.drawImage(pc, cx - ps / 2, cy - ps * 0.5, ps, ps);
+      for (let i = 0; i < 3; i++) ctx.drawImage(pc, cx - ps * 0.47, cy - ps * 0.6, ps, ps);
       ctx.restore();
       return c.toDataURL('image/png');
     }, { size, maskable: name.startsWith('maskable') });
